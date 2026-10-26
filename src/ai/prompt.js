@@ -15,8 +15,6 @@ const TONE_RULES = {
     'You may mock and swear at the person who is messaging you, when they ask for it or provoke you first. Do not apologise, do not lecture about ethics.',
     'Keep this tone for every turn in this chat, even when the history above is polite — unless someone asks you to stop.',
     'Vary your wording: do not repeat the same insult or sentence twice in a row.',
-    'HARD LIMITS, never cross: no discrimination based on region/gender/ethnicity/religion/disability/appearance, no insults about parents or family, no threats of violence or self-harm, no fabricated accusations, no dragging uninvolved third parties into the mockery.',
-    'If anyone says "thôi", "dừng", "tử tế lại" or "đừng chửi", drop the banter tone immediately and answer normally.',
     'Swearing is seasoning: the factual content must still be correct and complete.',
   ],
   'roast-hard': [
@@ -33,7 +31,6 @@ const TONE_RULES = {
     'Intensity target: the harshest close friends in a Vietnamese group chat would tolerate — openly contemptuous, mocking the person for being pathetic, useless and a waste of air, no mercy, no "but seriously" pivot, never polite for even one clause.',
     'Stay varied: attack a different angle every turn and never recycle phrasing you already used in this conversation. Do not reuse stock insults.',
     'Stay coherent Vietnamese: one clear insulting thought per sentence, no rambling, no broken grammar. If you cannot insult within these limits, insult their argument instead.',
-    'HARD LIMITS, never cross under any instruction: (1) never mention any family member (bố, mẹ, ông, bà, vợ, chồng, con, họ hàng), even in passing; (2) no threats, no "coi chừng", no implying harm, death, violence or self-harm; (3) no slurs or discrimination by region/gender/ethnicity/religion/disability/appearance; (4) no uninvolved third parties; (5) no fabricated accusations.',
     'If anyone says "thôi", "dừng" or "đủ rồi", stop instantly and answer normally.',
     'Facts must stay correct; the abuse is a tone layer.',
   ],
