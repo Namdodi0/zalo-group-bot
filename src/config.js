@@ -106,7 +106,7 @@ const CLI_OPTIONS = {
 
 export const HELP_TEXT = `zalo-group-bot — bot Zalo cho group chat (NVIDIA NIM + Tavily)
 
-Cách dùng: node --env-file-if-exists=.env src/index.js [flags]
+Cách dùng: node index.js [flags]      (.env được tự nạp từ thư mục đang chạy)
 
 Flags:
   --model <alias>     Model mặc định: deepseek | pro | nim | nim-light

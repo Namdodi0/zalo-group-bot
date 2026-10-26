@@ -5,8 +5,9 @@ import { createModelRouter } from './ai/router.js';
 import { createStickerStore } from './ai/stickers.js';
 import { createToolRuntime } from './ai/tools.js';
 import { createCommands } from './commands/index.js';
-import { collectSecrets, describeConfig, HELP_TEXT, loadConfig } from './config.js';
+import { collectSecrets, ConfigError, describeConfig, HELP_TEXT, loadConfig } from './config.js';
 import { createContextStore } from './context/store.js';
+import { describeEnvHints, loadEnvFiles } from './env.js';
 import { createHttp } from './http.js';
 import { createLogger, printBanner } from './logger.js';
 import { createImageValidator } from './media/validate.js';
@@ -15,6 +16,11 @@ import { createTavilyClient } from './search/tavily.js';
 import { createZaloClient } from './zalo/client.js';
 import { startPolling } from './zalo/polling.js';
 import { createWebhookServer } from './zalo/webhook.js';
+
+// Nạp .env ngay trong code, TRƯỚC khi đọc config: panel host / pm2 / systemd hay
+// chạy `node index.js` mà bỏ cờ --env-file-if-exists. Biến có sẵn trong môi trường
+// vẫn được ưu tiên (xem src/env.js).
+const envReport = loadEnvFiles();
 
 async function main() {
   const config = loadConfig();
@@ -32,6 +38,15 @@ async function main() {
   const metrics = createMetrics();
 
   logger.debug('config', describeConfig(config));
+  logger.debug('env files', {
+    cwd: envReport.cwd,
+    files: envReport.files.map((file) => ({
+      name: file.name,
+      found: file.found,
+      applied: file.applied.length,
+      ...(file.error ? { error: file.error } : {}),
+    })),
+  });
   logger.info('starting zalo-group-bot', { mode: config.mode, ...(config.dryRun ? { dryRun: true } : {}), icon: '🚀' });
 
   const httpClient = createHttp({ logger, metrics });
@@ -312,5 +327,10 @@ async function main() {
 main().catch((error) => {
   const message = error instanceof Error ? error.message : String(error);
   process.stderr.write(`fatal: ${message}\n`);
+  if (error instanceof ConfigError) {
+    // Chỉ ra đã tìm .env ở đâu, file nào thiếu → khỏi đoán mò trên panel.
+    const hints = describeEnvHints();
+    if (hints.length) process.stderr.write(`hint:\n${hints.join('\n')}\n`);
+  }
   process.exit(1);
 });

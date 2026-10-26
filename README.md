@@ -17,7 +17,7 @@ Bot chat cho **một nhóm Zalo**, dùng **DeepSeek** (`deepseek-flash` = V4.1 F
 
 ## Yêu cầu
 
-- Node.js **>= 22.9** (đã test trên v24.19; cần `--env-file-if-exists`).
+- Node.js **>= 20.6** (đã test trên v24.19 và v26.12). File `.env` được **nạp trong code** (`src/env.js`) nên chạy `node index.js` kiểu gì cũng có config — không bắt buộc cờ `--env-file-if-exists`.
 - Bot Zalo đã tạo trong **Zalo Bot Creator**, token hợp lệ, `can_join_groups = true`.
 - Key **DeepSeek** (`sk-...`) cho model chính và key **NVIDIA NIM** (`nvapi-...`) cho model dự phòng, cùng Tavily (`tvly-...`).
 
@@ -35,12 +35,15 @@ npm run smoke        # kiểm tra token + DeepSeek + NIM + Tavily + validate ả
 
 ```powershell
 npm start                        # polling (mặc định, không cần tunnel)
+node index.js                    # tương đương — .env tự nạp, không cần cờ env-file
 npm run dev                      # polling + watch
 node --env-file-if-exists=.env src/index.js --once   # nhận 1 lượt update rồi thoát
 npm test                         # unit test (node --test)
 npm run typecheck                # tsc checkJs trên src/
 npm run simulate -- "giá vàng hôm nay?"   # chạy thử agent thật (DeepSeek/NIM/Tavily) nhưng KHÔNG gửi Zalo
 ```
+
+Thứ tự ưu tiên biến môi trường: biến đã có trong `process.env` (panel host, pm2, terminal) **thắng** file `.env`; biến khai báo sẵn nhưng **rỗng** thì `.env` được điền vào. Nếu thiếu token, log lỗi in ra luôn thư mục đang chạy và file `.env` nào không tìm thấy.
 
 `simulate` in ra câu trả lời như thể bot đang trong group, dùng context riêng ở `data/simulate/` — tiện để thử tool calling, trí nhớ, `/status`, `/reset` trước khi thả bot vào nhóm thật.
 

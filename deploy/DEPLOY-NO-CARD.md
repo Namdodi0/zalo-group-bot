@@ -106,6 +106,8 @@ Fair Use: **1 tài khoản free / người**.
 3. Upload `dist/zalo-group-bot-*.zip` (hoặc trỏ GitHub repo nếu bạn đẩy code lên)
 4. Giải nén trong file manager của panel, để `src/index.js` ở thư mục gốc server
 
+Nếu lấy code từ GitHub (repo public): dán `https://github.com/Namdodi0/zalo-group-bot.git`, branch `main`, bật `AUTO_UPDATE=1` để mỗi lần restart tự `git pull`.
+
 ### B2. Nhập biến môi trường
 
 Trong panel → **Environment / Startup**, thêm đúng các biến sau (không cần file `.env`):
@@ -125,10 +127,20 @@ LOG_FORMAT=json
 ### B3. Startup command
 
 ```
-node --env-file-if-exists=.env src/index.js
+node index.js
 ```
 
-(`--env-file-if-exists` chịu được việc **không có** file `.env` — biến lấy từ panel.)
+Bot **tự nạp `.env`** ở thư mục đang chạy (xem `src/env.js`), nên:
+
+- Có file `.env` → dùng được ngay, không cần cờ `--env-file-if-exists`.
+- Không có `.env` → biến lấy từ panel vẫn chạy (biến trong môi trường luôn thắng file).
+- Nếu vẫn báo `fatal: Thiếu ZALO_BOT_TOKEN`, phần `hint:` ngay dưới sẽ in **thư mục làm việc** và **đã tìm `.env` ở đâu** → tạo file đúng chỗ đó.
+
+Lưu ý khi tạo `.env` bằng File Manager của panel:
+
+- Lưu dạng **UTF-8, không BOM** (Notepad: *Save as → Encoding: UTF-8*; nếu có BOM bot vẫn đọc được, nhưng đừng dùng UTF-16).
+- Không cần dấu nháy quanh giá trị; comment bằng `#` ở đầu dòng.
+- Trên Wispbyte, nhớ `DATA_DIR=/tmp/zalo-data` nếu `/home/container` không ghi được (lỗi `EACCES`).
 
 ### B4. Kiểm tra
 

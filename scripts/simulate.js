@@ -15,6 +15,7 @@ import { createToolRuntime } from '../src/ai/tools.js';
 import { createCommands } from '../src/commands/index.js';
 import { loadConfig } from '../src/config.js';
 import { createContextStore } from '../src/context/store.js';
+import { loadEnvFiles } from '../src/env.js';
 import { createHttp } from '../src/http.js';
 import { createLogger } from '../src/logger.js';
 import { createImageValidator } from '../src/media/validate.js';
@@ -26,6 +27,8 @@ if (!text) {
   console.error('Dùng: npm run simulate -- "câu hỏi"');
   process.exit(1);
 }
+
+loadEnvFiles();
 
 const config = loadConfig({
   // Không parse flags từ nội dung tin nhắn (tránh "--help" trong câu hỏi).

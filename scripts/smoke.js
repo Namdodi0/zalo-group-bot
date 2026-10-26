@@ -1,5 +1,6 @@
 import { DEEPSEEK_REASONING_MAP, NIM_REASONING_MAP, createLlmClient } from '../src/ai/nim.js';
 import { loadConfig } from '../src/config.js';
+import { loadEnvFiles } from '../src/env.js';
 import { createHttp } from '../src/http.js';
 import { createLogger } from '../src/logger.js';
 import { createImageValidator } from '../src/media/validate.js';
@@ -15,6 +16,7 @@ function report(label, ok, detail = '') {
 }
 
 async function main() {
+  loadEnvFiles();
   const config = loadConfig();
   const logger = createLogger({ level: 'warn' });
   const metrics = createMetrics();
