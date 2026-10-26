@@ -24,6 +24,7 @@ export function makeConfig(overrides = {}) {
       apiKey: 'test-nim-key',
       baseUrl: 'https://integrate.api.nvidia.com/v1',
       model: 'nvidia/nemotron-3.5-super-vl-120b-a12b',
+      ultraModel: 'nvidia/nemotron-3-ultra-550b-a55b',
       fallbackModel: 'nvidia/nemotron-3.5-lightning-30b-a3b',
       temperature: 0.6,
       timeoutMs: 5000,

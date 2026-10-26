@@ -18,6 +18,11 @@ export const MODEL_ALIASES = {
     modelKey: 'model',
     label: 'Nemotron 3.5 Super VL',
   },
+  ultra: {
+    provider: 'nim',
+    modelKey: 'ultraModel',
+    label: 'Nemotron 3 Ultra 550B (A55B)',
+  },
   'nim-light': {
     provider: 'nim',
     modelKey: 'fallbackModel',

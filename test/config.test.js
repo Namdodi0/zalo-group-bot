@@ -84,8 +84,21 @@ test('mặc định dùng DeepSeek flash 4.1 với reasoning off', async () => {
   assert.equal(config.ai.reasoning, 'none');
 });
 
-test('AI_REASONING được ưu tiên hơn NIM_REASONING (tương thích cũ)', async () => {
+test('NIM_ULTRA_MODEL: mặc định nemotron-3-ultra, override được qua env/flag', async () => {
   const dir = await tempDir();
+  assert.equal(
+    loadConfig({ argv: [], env: baseEnv(), cwd: dir }).nim.ultraModel,
+    'nvidia/nemotron-3-ultra-550b-a55b',
+  );
+  assert.equal(
+    loadConfig({ argv: [], env: baseEnv({ NIM_ULTRA_MODEL: 'nvidia/custom-ultra' }), cwd: dir }).nim.ultraModel,
+    'nvidia/custom-ultra',
+  );
+  const viaFlag = loadConfig({ argv: ['--model', 'ultra'], env: baseEnv(), cwd: dir });
+  assert.equal(viaFlag.model.defaultAlias, 'ultra');
+});
+
+test('AI_REASONING được ưu tiên hơn NIM_REASONING (tương thích cũ)', async () => {  const dir = await tempDir();
   const config = loadConfig({
     argv: [],
     env: baseEnv({ AI_REASONING: 'low', NIM_REASONING: 'high' }),

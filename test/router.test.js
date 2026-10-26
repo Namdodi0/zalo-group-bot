@@ -41,6 +41,20 @@ test('router: mặc định deepseek, /model đổi theo record, fallback nim-li
   assert.equal(clients.calls[2].provider, 'nim');
 });
 
+test('router: alias ultra trỏ tới Nemotron 3 Ultra, đổi được trong chat', async () => {
+  const config = makeConfig();
+  const clients = makeClients();
+  const router = createModelRouter({ config, clients, logger: silentLogger });
+
+  assert.equal(router.find('ultra').model, 'nvidia/nemotron-3-ultra-550b-a55b');
+  assert.equal(router.resolve({ meta: { model: 'ultra' } }).alias, 'ultra');
+  assert.equal(router.list().some((item) => item.alias === 'ultra'), true);
+
+  await router.chat({ record: { meta: { model: 'ultra' } }, messages: [] });
+  assert.equal(clients.calls[0].provider, 'nim');
+  assert.equal(clients.calls[0].input.model, 'nvidia/nemotron-3-ultra-550b-a55b');
+});
+
 test('router: alias của provider chưa cấu hình bị bỏ qua', () => {
   const config = makeConfig({ model: { defaultAlias: 'deepseek', fallbackAlias: 'nim-light' } });
   const router = createModelRouter({

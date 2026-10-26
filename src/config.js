@@ -110,7 +110,7 @@ export const HELP_TEXT = `zalo-group-bot — bot Zalo cho group chat (NVIDIA NIM
 Cách dùng: node index.js [flags]      (.env được tự nạp từ thư mục đang chạy)
 
 Flags:
-  --model <alias>     Model mặc định: deepseek | pro | nim | nim-light
+  --model <alias>     Model mặc định: deepseek | pro | nim | ultra | nim-light
   --mode <m>          polling | webhook
   --think <mode>      none | low | medium | high | auto
   --max-tokens <n>    Giới hạn số token sinh ra (bỏ trống = không giới hạn)
@@ -294,6 +294,7 @@ export function loadConfig(input = {}) {
       apiKey,
       baseUrl: readStr(env, 'NIM_BASE_URL', 'https://integrate.api.nvidia.com/v1').replace(/\/+$/, ''),
       model: readStr(env, 'NIM_MODEL', 'nvidia/nemotron-3.5-super-vl-120b-a12b'),
+      ultraModel: readStr(env, 'NIM_ULTRA_MODEL', 'nvidia/nemotron-3-ultra-550b-a55b'),
       fallbackModel: readStr(env, 'NIM_FALLBACK_MODEL', 'nvidia/nemotron-3.5-lightning-30b-a3b'),
       temperature: Number(readStr(env, 'NIM_TEMPERATURE', '0.6')) || 0.6,
       timeoutMs: /** @type {number} */ (readInt(env, 'NIM_TIMEOUT_MS', 15000, { min: 1000 })),

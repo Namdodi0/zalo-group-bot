@@ -5,7 +5,7 @@ Bot chat cho **một nhóm Zalo**, dùng **DeepSeek** (`deepseek-flash` = V4.1 F
 ## Tính năng
 
 - Trả lời tin nhắn trong group khi được **@mention** hoặc **reply** vào tin của bot (giới hạn của Zalo Bot — xem bên dưới).
-- **Đa provider + đổi model trong chat**: `/model` để chuyển giữa DeepSeek Flash, DeepSeek Pro, Nemotron Super VL, Nemotron Lightning (lưu theo từng chat).
+- **Đa provider + đổi model trong chat**: `/model` để chuyển giữa DeepSeek Flash, DeepSeek Pro, Nemotron Super VL, **Nemotron 3 Ultra 550B**, Nemotron Lightning (lưu theo từng chat).
 - **Ngữ cảnh bền vững** theo từng chat: lưu JSON, **mặc định không giới hạn** độ dài, `/reset` để xoá.
 - **Web search** qua Tavily (tool calling), trả lời kèm URL nguồn.
 - **Gửi ảnh** (`sendPhoto`) qua lệnh `/image` hoặc khi model tự gọi tool `send_image`.
@@ -130,7 +130,7 @@ Sau lần chạy đầu, log sẽ in `chatId` (hoặc gõ `/id` trong nhóm) —
 | `/sticker add <id> [tên]` | (Admin) Gửi thử + lưu sticker ID chính thức vào `data/stickers.json` |
 | `/sticker remove <id\|tên>` | (Admin) Xoá sticker khỏi danh sách tự thêm |
 | `/model` | Xem model hiện tại + danh sách để đổi |
-| `/model <alias>` | Đổi model cho chat: `deepseek`, `pro`, `nim`, `nim-light` |
+| `/model <alias>` | Đổi model cho chat: `deepseek`, `pro`, `nim`, `ultra`, `nim-light` |
 | `/tone [roast\|hard\|friendly\|default]` | Đổi giọng điệu cho chat này: `roast` (cà khịa), `hard` (chửi thẳng, nặng lời), `friendly`, `default` = theo `BOT_TONE` |
 | `/think on\|off\|low\|high\|auto` | Bật/tắt reasoning cho chat này |
 | `/ping` | Đo round-trip Zalo API |
@@ -141,8 +141,8 @@ Toàn bộ biến môi trường có trong [`.env.example`](.env.example). Các 
 
 - **Zalo**: `ZALO_BOT_TOKEN`, `ZALO_BOT_ID`, `ALLOWED_CHAT_IDS`, `MODE`, `WEBHOOK_HOST` (mặc định `127.0.0.1`), `WEBHOOK_PORT`, `WEBHOOK_PATH`, `WEBHOOK_PUBLIC_URL`, `WEBHOOK_SECRET`.
 - **DeepSeek (model chính)**: `DEEPSEEK_API_KEY`, `DEEPSEEK_BASE_URL`, `DEEPSEEK_MODEL` (`deepseek-flash`), `DEEPSEEK_PRO_MODEL` (`deepseek-v4-pro`), `DEEPSEEK_TEMPERATURE`, `DEEPSEEK_TIMEOUT_MS`.
-- **Chọn model**: `MODEL_DEFAULT` (`deepseek|pro|nim|nim-light`), `MODEL_FALLBACK` (mặc định `nim-light`), `AI_REASONING` (`none|low|medium|high|auto`, `NIM_REASONING` là tên cũ vẫn nhận), `NIM_MAX_TOKENS` (**để trống hoặc `0` = không giới hạn**), `RESPONSE_TIMEOUT_MS`.
-- **NIM (dự phòng)**: `NIM_API_KEY`, `NIM_BASE_URL`, `NIM_MODEL`, `NIM_FALLBACK_MODEL`, `NIM_TEMPERATURE`, `NIM_TIMEOUT_MS`.
+- **Chọn model**: `MODEL_DEFAULT` (`deepseek|pro|nim|ultra|nim-light`), `MODEL_FALLBACK` (mặc định `nim-light`), `AI_REASONING` (`none|low|medium|high|auto`, `NIM_REASONING` là tên cũ vẫn nhận), `NIM_MAX_TOKENS` (**để trống hoặc `0` = không giới hạn**), `RESPONSE_TIMEOUT_MS`.
+- **NIM (dự phòng)**: `NIM_API_KEY`, `NIM_BASE_URL`, `NIM_MODEL`, `NIM_ULTRA_MODEL` (`nvidia/nemotron-3-ultra-550b-a55b`), `NIM_FALLBACK_MODEL`, `NIM_TEMPERATURE`, `NIM_TIMEOUT_MS`.
 - **Context**: `CONTEXT_MAX_TOKENS` (**0 = không giới hạn**), `CONTEXT_MAX_MESSAGES` (**0 = không giới hạn**), `CONTEXT_MAX_CHARS_PER_MESSAGE` (mặc định 12000, **0 = không cắt**), `CONTEXT_MAX_IMAGES` (số ảnh gửi kèm dạng ảnh), `CONTEXT_TTL_HOURS`, `CONTEXT_SUMMARY`.
 - **Tavily**: `SEARCH_ENABLED`, `SEARCH_AUTO` (**off = model không tự search, `/search` vẫn dùng được**), `SEARCH_DEPTH` (`fast|basic|advanced|ultra-fast`), `SEARCH_MAX_RESULTS`, `SEARCH_COUNTRY`, `SEARCH_CACHE_TTL_MS` (0 = tắt cache).
 - **Hành vi**: `BOT_TONE` (**mặc định `hard`** = chửi nặng; `extreme` = gắt nhất, bật bằng `/tone max`; `roast` = vừa; `friendly` = lịch sự), `EMOJI`, `TYPING`, `TYPING_INTERVAL_MS`, `PROGRESSIVE` (`auto` = chỉ tách khi chờ lâu, `on` = tách sớm, `off` = gộp), `PROGRESSIVE_AFTER_MS`, `MAX_MESSAGES_PER_REPLY` (**0 = gửi hết**), `MAX_QUEUE_DEPTH`, `ADMIN_IDS`, `STICKER_ENABLED`, `STICKER_ECHO`, `STICKER_IDS` (`id1,id2:tên hai`).
@@ -207,7 +207,7 @@ test-utils/          helper dùng chung cho test
 | Sticker lỗi `425 The sticker is invalid` | Đang dùng ID gói (category) thay vì sticker ID chính thức. Dùng `/sticker` để xem ID đang có, hoặc `/sticker add <id>` với ID lấy từ hướng dẫn Zalo. |
 | `/sticker add` báo Zalo từ chối | ID sai/không tồn tại. Sticker ID phải đúng 20 ký tự hex và là sticker chính thức; lệnh này gửi thử trước khi lưu. |
 | DeepSeek `422` khi `reasoning_effort: "off"` | API chỉ nhận `none|low|high|max`. Bot đã map `off` → `none`; nếu tự gọi API thì dùng `none`. |
-| `/model deepseek` không đổi được | Lệnh cần quyền admin nếu đặt `ADMIN_IDS`; alias hợp lệ: `deepseek`, `pro`, `nim`, `nim-light`. |
+| `/model deepseek` không đổi được | Lệnh cần quyền admin nếu đặt `ADMIN_IDS`; alias hợp lệ: `deepseek`, `pro`, `nim`, `ultra`, `nim-light`. |
 | DeepSeek 400 `model not found` | Tên model thật là `deepseek-flash` / `deepseek-v4-pro` (không phải `deepseek-v4.1-flash`). Sửa `DEEPSEEK_MODEL` nếu cần. |
 | Context phình to (nếu bạn tự đặt giới hạn) | Tăng/đặt lại `CONTEXT_MAX_TOKENS`/`CONTEXT_MAX_MESSAGES` = 0 để bỏ giới hạn, hoặc `/reset`. |
 | Zalo vẫn hiện "đang soạn tin" sau khi bot nhắn | Bot đã tắt typing trước tin đầu tiên; nếu vẫn thấy, giảm `TYPING_INTERVAL_MS` hoặc tắt hẳn `TYPING=off`. Indicator phía Zalo có thể tự hết hạn chậm vài giây. |
