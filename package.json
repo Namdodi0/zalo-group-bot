@@ -1,0 +1,24 @@
+{
+  "name": "zalo-group-bot",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Zalo group chatbot powered by NVIDIA NIM (Nemotron 3.5 Super VL) + Tavily web search",
+  "engines": {
+    "node": ">=20.6"
+  },
+  "scripts": {
+    "start": "node --env-file-if-exists=.env src/index.js",
+    "dev": "node --env-file-if-exists=.env --watch src/index.js",
+    "webhook": "node --env-file-if-exists=.env src/index.js --mode webhook",
+    "smoke": "node --env-file-if-exists=.env scripts/smoke.js",
+    "simulate": "node --env-file-if-exists=.env scripts/simulate.js",
+    "pack": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/pack.ps1",
+    "test": "node --test",
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.5",
+    "typescript": "^7.0.2"
+  }
+}

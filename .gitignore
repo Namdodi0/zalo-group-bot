@@ -1,0 +1,11 @@
+node_modules/
+dist/
+backups/
+data/
+.env
+.env.local
+.env.panel
+.env.*.local
+*.log
+.tmp/
+coverage/

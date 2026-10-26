@@ -1,0 +1,215 @@
+# zalo-group-bot
+
+Bot chat cho **một nhóm Zalo**, dùng **DeepSeek** (`deepseek-flash` = V4.1 Flash, mặc định) và **NVIDIA NIM** (`nvidia/nemotron-3.5-super-vl-120b-a12b`, dự phòng), cùng **Tavily** cho web search. Viết bằng Node.js thuần (ESM), **không có dependency runtime** — chỉ dùng `fetch`, `node:http`, `node:test` có sẵn.
+
+## Tính năng
+
+- Trả lời tin nhắn trong group khi được **@mention** hoặc **reply** vào tin của bot (giới hạn của Zalo Bot — xem bên dưới).
+- **Đa provider + đổi model trong chat**: `/model` để chuyển giữa DeepSeek Flash, DeepSeek Pro, Nemotron Super VL, Nemotron Lightning (lưu theo từng chat).
+- **Ngữ cảnh bền vững** theo từng chat: lưu JSON, **mặc định không giới hạn** độ dài, `/reset` để xoá.
+- **Web search** qua Tavily (tool calling), trả lời kèm URL nguồn.
+- **Gửi ảnh** (`sendPhoto`) qua lệnh `/image` hoặc khi model tự gọi tool `send_image`.
+- **Gửi sticker** (`sendSticker`) qua `/sticker`, tool `send_sticker`, và tự trả lại sticker khi có người gửi sticker cho bot (cần sticker ID chính thức — xem bên dưới).
+- **Hiểu ảnh** người dùng gửi (DeepSeek Flash và Nemotron Super VL đều nhận ảnh).
+- **Emoji**, định dạng markdown Zalo, chia tin dài ≤ 2000 ký tự.
+- **Giảm độ trễ**: không giới hạn `max_tokens`, `reasoning_effort: none` mặc định (~0 token suy nghĩ), typing indicator, warm-up model, streaming + gửi tách đoạn khi trả lời chậm, cache search/ảnh, retry + circuit breaker.
+- Lệnh: `/help`, `/reset`, `/status`, `/id`, `/search`, `/image`, `/sticker`, `/model`, `/think`, `/ping`.
+
+## Yêu cầu
+
+- Node.js **>= 22.9** (đã test trên v24.19; cần `--env-file-if-exists`).
+- Bot Zalo đã tạo trong **Zalo Bot Creator**, token hợp lệ, `can_join_groups = true`.
+- Key **DeepSeek** (`sk-...`) cho model chính và key **NVIDIA NIM** (`nvapi-...`) cho model dự phòng, cùng Tavily (`tvly-...`).
+
+## Cài đặt
+
+```powershell
+cd zalo-group-bot
+npm install          # 0 runtime dep; cài typescript/@types/node cho typecheck
+copy .env.example .env
+# điền ZALO_BOT_TOKEN, DEEPSEEK_API_KEY, NIM_API_KEY (dự phòng), TAVILY_API_KEY
+npm run smoke        # kiểm tra token + DeepSeek + NIM + Tavily + validate ảnh
+```
+
+## Chạy
+
+```powershell
+npm start                        # polling (mặc định, không cần tunnel)
+npm run dev                      # polling + watch
+node --env-file-if-exists=.env src/index.js --once   # nhận 1 lượt update rồi thoát
+npm test                         # unit test (node --test)
+npm run typecheck                # tsc checkJs trên src/
+npm run simulate -- "giá vàng hôm nay?"   # chạy thử agent thật (DeepSeek/NIM/Tavily) nhưng KHÔNG gửi Zalo
+```
+
+`simulate` in ra câu trả lời như thể bot đang trong group, dùng context riêng ở `data/simulate/` — tiện để thử tool calling, trí nhớ, `/status`, `/reset` trước khi thả bot vào nhóm thật.
+
+### Webhook (tuỳ chọn, cần HTTPS công khai)
+
+```powershell
+# ví dụ với cloudflared / ngrok trỏ về cổng 8787
+$env:MODE="webhook"; $env:WEBHOOK_PUBLIC_URL="https://abc.example.com/zalo/webhook"
+$env:WEBHOOK_SECRET="mot-secret-du-dai-123"
+npm start
+```
+
+Bot tự gọi `setWebhook` nếu có `WEBHOOK_PUBLIC_URL`; nếu không, tự đăng ký thủ công bằng `setWebhook` của Zalo. Webhook kiểm tra header `X-Bot-Api-Secret-Token` và trả `200` ngay (< 100ms) rồi xử lý nền.
+
+## Log
+
+Mặc định log ở dạng **pretty**: giờ + icon + căn cột, có màu khi chạy trong terminal thật.
+
+```
+18:33:31 🚀 starting zalo-group-bot    mode=polling dryRun=false
+╭──────────────────────────────────────────────────────────────────────────────────────────────╮
+│ 🤖 Bot deepseek  ·  Zalo group chatbot                                                       │
+│ 🧠 DeepSeek V4.1 Flash · deepseek/deepseek-flash  (fallback: nim-light) │
+│ ⚙️  polling · reasoning=none · max_tokens=không giới hạn                                     │
+│ 🔎 search=fast/4 · emoji=on · typing=on · progressive=auto                                   │
+│ 📚 context không giới hạn · trả lời không giới hạn tin                                       │
+╰──────────────────────────────────────────────────────────────────────────────────────────────╯
+18:33:31 🤖 zalo bot ready             id=2214705736200876533 name="Bot deepseek" groups=true
+18:33:31 📡 polling started            mode=long-poll timeoutSec=30
+18:33:31 ⚡  nim warmup done            ms=394
+18:33:45 💬 incoming message           chatId=g1 from="Nam" kind=text len=12
+18:33:46 🔍 web search                 query="giá vàng hôm nay" results=4
+18:33:47 ✅ replied                    ms=1840 messages=1 kept=4 reasoning=none model=deepseek provider=deepseek
+```
+
+- `LOG_FORMAT=json` (hoặc flag `--json`) → mỗi sự kiện một dòng JSON, tiện ghi file/parse.
+- `LOG_COLOR=auto|always|never` → `auto` bật màu khi stdout là terminal, tắt khi pipe/CI.
+- `--verbose` → thêm log debug (retry, cache, tool, context).
+- Token/key luôn bị che (`token=***`) ở cả hai chế độ; lỗi chỉ in message gọn, stack đầy đủ nằm ở chế độ JSON.
+
+## Đưa bot vào nhóm
+
+Group chat đang ở giai đoạn **Beta** và bot **chỉ nhận được** tin khi:
+
+1. Có người **@mention** tên bot, hoặc
+2. Có người **reply (quote)** vào một tin bot đã gửi.
+
+Các bước thêm bot (theo [docs Zalo](https://docs.zaloplatforms.com/docs/BOT/best-practices/build-bot-interaction-with-group)):
+
+1. Mở Mini App **Zalo Bot Creator** → chọn bot → trang thông tin bot.
+2. Mục **"Mời Bot vào nhóm"** → nhấn chia sẻ, gửi link vào nhóm.
+3. Trưởng nhóm nhấn vào link vừa gửi.
+4. Popup **"Thêm Bot vào Nhóm"** → **Xác nhận**.
+5. Bot gửi tin chào → xong.
+
+Sau lần chạy đầu, log sẽ in `chatId` (hoặc gõ `/id` trong nhóm) — điền vào `ALLOWED_CHAT_IDS` để bot chỉ hoạt động trong group đó.
+
+## Lệnh
+
+| Lệnh | Mô tả |
+|---|---|
+| `/help` | Danh sách lệnh + hướng dẫn @mention |
+| `/status` | Model, mode, uptime, context, latency p50/p95, lỗi, breaker |
+| `/id` | `chat.id`, `chat_type`, id người gửi |
+| `/reset` | Xoá ngữ cảnh chat hiện tại nhưng **giữ cài đặt** (`model`/`tone`/`think`); `/reset all` xoá cả cài đặt (admin-gated nếu có `ADMIN_IDS`) |
+| `/search <câu hỏi>` | Bắt buộc web search cho câu hỏi |
+| `/image <từ khoá>` | Tìm và gửi ảnh |
+| `/sticker [cảm xúc]` | Gửi sticker (mặc định sticker mẫu, hoặc theo tên/tag đã thêm) |
+| `/sticker add <id> [tên]` | (Admin) Gửi thử + lưu sticker ID chính thức vào `data/stickers.json` |
+| `/sticker remove <id\|tên>` | (Admin) Xoá sticker khỏi danh sách tự thêm |
+| `/model` | Xem model hiện tại + danh sách để đổi |
+| `/model <alias>` | Đổi model cho chat: `deepseek`, `pro`, `nim`, `nim-light` |
+| `/tone [roast\|hard\|friendly\|default]` | Đổi giọng điệu cho chat này: `roast` (cà khịa), `hard` (chửi thẳng, nặng lời), `friendly`, `default` = theo `BOT_TONE` |
+| `/think on\|off\|low\|high\|auto` | Bật/tắt reasoning cho chat này |
+| `/ping` | Đo round-trip Zalo API |
+
+## Cấu hình
+
+Toàn bộ biến môi trường có trong [`.env.example`](.env.example). Các nhóm chính:
+
+- **Zalo**: `ZALO_BOT_TOKEN`, `ZALO_BOT_ID`, `ALLOWED_CHAT_IDS`, `MODE`, `WEBHOOK_HOST` (mặc định `127.0.0.1`), `WEBHOOK_PORT`, `WEBHOOK_PATH`, `WEBHOOK_PUBLIC_URL`, `WEBHOOK_SECRET`.
+- **DeepSeek (model chính)**: `DEEPSEEK_API_KEY`, `DEEPSEEK_BASE_URL`, `DEEPSEEK_MODEL` (`deepseek-flash`), `DEEPSEEK_PRO_MODEL` (`deepseek-v4-pro`), `DEEPSEEK_TEMPERATURE`, `DEEPSEEK_TIMEOUT_MS`.
+- **Chọn model**: `MODEL_DEFAULT` (`deepseek|pro|nim|nim-light`), `MODEL_FALLBACK` (mặc định `nim-light`), `AI_REASONING` (`none|low|medium|high|auto`, `NIM_REASONING` là tên cũ vẫn nhận), `NIM_MAX_TOKENS` (**để trống hoặc `0` = không giới hạn**), `RESPONSE_TIMEOUT_MS`.
+- **NIM (dự phòng)**: `NIM_API_KEY`, `NIM_BASE_URL`, `NIM_MODEL`, `NIM_FALLBACK_MODEL`, `NIM_TEMPERATURE`, `NIM_TIMEOUT_MS`.
+- **Context**: `CONTEXT_MAX_TOKENS` (**0 = không giới hạn**), `CONTEXT_MAX_MESSAGES` (**0 = không giới hạn**), `CONTEXT_MAX_CHARS_PER_MESSAGE` (mặc định 12000, **0 = không cắt**), `CONTEXT_MAX_IMAGES` (số ảnh gửi kèm dạng ảnh), `CONTEXT_TTL_HOURS`, `CONTEXT_SUMMARY`.
+- **Tavily**: `SEARCH_ENABLED`, `SEARCH_AUTO` (**off = model không tự search, `/search` vẫn dùng được**), `SEARCH_DEPTH` (`fast|basic|advanced|ultra-fast`), `SEARCH_MAX_RESULTS`, `SEARCH_COUNTRY`, `SEARCH_CACHE_TTL_MS` (0 = tắt cache).
+- **Hành vi**: `BOT_TONE` (**mặc định `hard`** = chửi nặng; `extreme` = gắt nhất, bật bằng `/tone max`; `roast` = vừa; `friendly` = lịch sự), `EMOJI`, `TYPING`, `TYPING_INTERVAL_MS`, `PROGRESSIVE` (`auto` = chỉ tách khi chờ lâu, `on` = tách sớm, `off` = gộp), `PROGRESSIVE_AFTER_MS`, `MAX_MESSAGES_PER_REPLY` (**0 = gửi hết**), `MAX_QUEUE_DEPTH`, `ADMIN_IDS`, `STICKER_ENABLED`, `STICKER_ECHO`, `STICKER_IDS` (`id1,id2:tên hai`).
+- **Log**: `LOG_FORMAT` (`pretty|json`), `LOG_COLOR` (`auto|always|never`), `LOG_LEVEL`.
+
+CLI flags: `--model <alias> --mode --think --max-tokens --progressive --no-progressive --no-search --no-emoji --no-typing --dry-run --once --verbose --help`.
+
+## Thiết kế & tối ưu
+
+```
+Zalo API ──► polling/webhook ──► agent (queue theo chat, 4 chat song song)
+                                     │
+                     ┌───────────────┼─────────────────┐
+                     ▼               ▼                 ▼
+              context store    model router       tools (Tavily, ảnh)
+              (JSON + trim)   (DeepSeek/NIM)      (cache + validate)
+```
+
+- **Chọn model**: mỗi chat có `meta.model` (do `/model` đặt) → router chọn provider/model tương ứng; mặc định `MODEL_DEFAULT` (deepseek-flash, reasoning off).
+- **Không cap `max_tokens`**: model sinh tới khi xong. Kiểm soát bằng prompt xin ngắn + `RESPONSE_TIMEOUT_MS` 30s; câu trả lời dài được chia thành nhiều tin 1900 ký tự, **không giới hạn số tin** (`MAX_MESSAGES_PER_REPLY=0`).
+- **Giảm latency**: `reasoning_effort: none` (DeepSeek không trả `reasoning_content`, đo ~600–900ms), typing indicator, warm-up lúc boot, cache Tavily (mặc định 10 phút), cache kết quả validate ảnh, keep-alive của `fetch`, chỉ dùng `search_depth=fast`.
+- **Chịu lỗi model**: TTFT timeout ~9s (treo thì bỏ và retry sớm), 2 lần thử, rồi fallback **sang provider khác** (`MODEL_FALLBACK`, mặc định Nemotron Lightning) không tool — tránh bot "chết" khi DeepSeek/NIM trả 500/timeout.
+- **Ngữ cảnh**: mặc định **không cắt** (gửi toàn bộ lịch sử, không cắt ký tự từng tin). Nếu đặt `CONTEXT_MAX_TOKENS`/`CONTEXT_MAX_MESSAGES`/`CONTEXT_MAX_CHARS_PER_MESSAGE` > 0 thì mới cắt theo budget (ước lượng `chars/3.2` + hiệu chỉnh bằng `usage.prompt_tokens`) và tự tóm tắt khi bỏ ≥ 6 tin. System prompt giữ tĩnh (viết bằng **tiếng Anh** để model bám instruction tốt hơn, nhưng có luật bắt buộc trả lời tiếng Việt; các câu ví dụ giọng điệu vẫn để tiếng Việt vì đó là output mẫu); mốc thời gian được chèn vào cuối tin user (bản gửi model, không lưu context). Ảnh: tối đa `CONTEXT_MAX_IMAGES` ảnh gần nhất gửi dạng ảnh, ảnh cũ thành `[ảnh đã gửi]`.
+- **Typing indicator**: gửi `typing` ngay khi nhận tin, refresh mỗi `TYPING_INTERVAL_MS`, và **tắt trước khi gửi tin đầu tiên** (chờ request typing cuối kết thúc) để Zalo không còn hiện "đang soạn tin" sau khi bot đã nhắn.
+- **Progressive**: `auto` = chỉ tách đoạn khi chờ > `PROGRESSIVE_AFTER_MS` và có đoạn ≥ 160 ký tự; `on` = tách sớm ngay khi có câu ≥ 80 ký tự; `off` = gộp một lần.
+- **Chống lỗi**: không retry khi gửi tin (tránh gửi trùng), retry cho các call đọc (getMe/getUpdates/Tavily), circuit breaker riêng từng provider 5 lỗi/30s, dedupe `message_id`, queue có trần (`MAX_QUEUE_DEPTH`), graceful shutdown chờ flush context.
+- **Webhook**: bind `WEBHOOK_HOST` (mặc định localhost, tunnel vẫn dùng được); secret lấy từ env hoặc sinh 1 lần lưu ở `data/webhook-secret` để restart không đổi; body JSON hỏng trả 400 để Zalo retry.
+
+## Cấu trúc
+
+```
+src/
+  config.js        env + CLI flags (util.parseArgs)
+  logger.js        JSON log, redaction token/key
+  http.js          fetch wrapper: timeout, retry, breaker, SSE
+  metrics.js       counters + p50/p95
+  zalo/            client REST, event normalize, polling, webhook
+  ai/              llm client, model router, stickers, prompt, tools, agent
+  context/         store (JSON atomic), builder (trim/summary), tokens
+  search/          tavily client + format
+  media/           validate URL ảnh
+  text/            chunk, sanitize markdown, strip emoji/mention
+  commands/        /help /reset /status ...
+scripts/smoke.js     kiểm tra token + DeepSeek + NIM + Tavily
+scripts/simulate.js  chạy thử agent thật, không gửi Zalo
+test/                unit tests (node --test)
+test-utils/          helper dùng chung cho test
+```
+
+## Xử lý sự cố
+
+| Hiện tượng | Nguyên nhân / cách xử lý |
+|---|---|
+| Bot không trả lời trong group | Zalo chỉ gửi event khi **@mention** hoặc **reply** tin của bot. Kiểm tra `chat_type=GROUP` trong log và `ALLOWED_CHAT_IDS`. |
+| Log `zalo.getUpdates.empty` / `error_code 408` | Bình thường: hết thời gian long-poll mà chưa có tin mới. Client coi đó là "không có tin", không backoff. |
+| `LLM HTTP 500` / treo vài giây | DeepSeek/NIM thỉnh thoảng trả 500 hoặc treo. Bot thử lại 2 lần (mỗi lần ≤ nửa ngân sách) rồi fallback sang provider khác (`MODEL_FALLBACK`). Nếu lỗi kéo dài: tăng `RESPONSE_TIMEOUT_MS`, giảm `CONTEXT_MAX_TOKENS`, hoặc `/model` sang model khác. |
+| `Zalo getMe failed` | Token sai/hết hạn. Tạo lại bot token trong Bot Creator. |
+| Tavily `country parameter is not supported` | API không hỗ trợ `country` với `search_depth=fast`; client đã tự bỏ `country` khi depth là fast/ultra-fast. |
+| Không gửi được ảnh | `sendPhoto` cần **URL công khai**; validator sẽ từ chối URL 403/không phải ảnh/quá 8MB. Bot chỉ gửi ảnh qua tool `send_image`; prompt cấm model bịa URL ảnh, nếu không tìm được bot sẽ nói thật. |
+| Ảnh người dùng gửi không đọc được | Model tải ảnh từ URL Zalo; nếu host chặn, bot trả lời text-only. |
+| `429` | Zalo quota hoặc Tavily hết credit; bot tự backoff. `/status` xem breaker. |
+| Sticker lỗi `425 The sticker is invalid` | Đang dùng ID gói (category) thay vì sticker ID chính thức. Dùng `/sticker` để xem ID đang có, hoặc `/sticker add <id>` với ID lấy từ hướng dẫn Zalo. |
+| `/sticker add` báo Zalo từ chối | ID sai/không tồn tại. Sticker ID phải đúng 20 ký tự hex và là sticker chính thức; lệnh này gửi thử trước khi lưu. |
+| DeepSeek `422` khi `reasoning_effort: "off"` | API chỉ nhận `none|low|high|max`. Bot đã map `off` → `none`; nếu tự gọi API thì dùng `none`. |
+| `/model deepseek` không đổi được | Lệnh cần quyền admin nếu đặt `ADMIN_IDS`; alias hợp lệ: `deepseek`, `pro`, `nim`, `nim-light`. |
+| DeepSeek 400 `model not found` | Tên model thật là `deepseek-flash` / `deepseek-v4-pro` (không phải `deepseek-v4.1-flash`). Sửa `DEEPSEEK_MODEL` nếu cần. |
+| Context phình to (nếu bạn tự đặt giới hạn) | Tăng/đặt lại `CONTEXT_MAX_TOKENS`/`CONTEXT_MAX_MESSAGES` = 0 để bỏ giới hạn, hoặc `/reset`. |
+| Zalo vẫn hiện "đang soạn tin" sau khi bot nhắn | Bot đã tắt typing trước tin đầu tiên; nếu vẫn thấy, giảm `TYPING_INTERVAL_MS` hoặc tắt hẳn `TYPING=off`. Indicator phía Zalo có thể tự hết hạn chậm vài giây. |
+| Webhook trả `403` sau khi restart | Trước đây secret tự sinh mỗi lần chạy; nay secret được lưu ở `data/webhook-secret` nên giữ nguyên. Nếu bạn đổi `DATA_DIR`, hãy set `WEBHOOK_SECRET` cố định. |
+| Tin nhắn bị bỏ khi bot đang bận | Queue có trần `MAX_QUEUE_DEPTH` (mặc định 50); bot gửi tin "đang xử lý nhiều tin" thay vì xếp hàng vô hạn. Tăng nếu cần. |
+| Webhook không nhận được request từ máy khác | `WEBHOOK_HOST` mặc định `127.0.0.1` (an toàn). Tunnel chạy trên cùng máy vẫn OK; chỉ đổi khi thật sự cần. |
+
+## Bảo mật
+
+- Token/key chỉ nằm trong `.env` (đã gitignore) và luôn bị redact trong log.
+- **Các key đã gửi qua chat nên được coi là đã lộ — hãy rotate** (tạo token/key mới) sau khi bot chạy ổn.
+- Webhook bắt buộc secret ≥ 8 ký tự, so sánh timing-safe; secret tự sinh được lưu ở `data/webhook-secret` (không commit).
+- Webhook chỉ bind localhost theo mặc định; `setWebhook`/`sendMessage` không retry để tránh gửi trùng.
+- Nên đặt `ALLOWED_CHAT_IDS` và `ADMIN_IDS` khi dùng thật trong group.
+
+## Giới hạn đã biết
+
+- Group chat của Zalo Bot đang **Beta**, không có tính năng "nghe mọi tin nhắn trong nhóm".
+- `getUpdates` (polling) chỉ nên dùng khi dev; production nên dùng webhook để không bỏ lỡ event.
+- Không có tính năng nghe tin thoại (voice); sticker chỉ gửi được bằng **sticker ID chính thức** (20 hex). ID gói trên stickers.zaloapp.com **không** dùng được (Zalo trả `425 The sticker is invalid`) — dùng `/sticker add <id>` với ID lấy theo hướng dẫn của Zalo ([video](https://vimeo.com/649330161)).
+- Không thể "huỷ" typing indicator phía Zalo: bot dừng gửi typing trước khi nhắn, phần còn lại do client Zalo tự hết hạn (~vài giây).
+- NIM báo `cached_tokens = 0` kể cả khi request giống hệt → không có prefix cache thực tế; system prompt vẫn được giữ tĩnh để không tự làm hại nếu NVIDIA bật cache sau này.
+- DeepSeek chỉ nhận `reasoning_effort` là `none|low|high|max` (`off` bị 422) — bot map sẵn. Tên model của API là `deepseek-flash` (V4.1 Flash) và `deepseek-v4-pro`.
