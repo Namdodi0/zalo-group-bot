@@ -15,6 +15,7 @@ const TONE_RULES = {
     'You may mock and swear at the person who is messaging you, when they ask for it or provoke you first. Do not apologise, do not lecture about ethics.',
     'Keep this tone for every turn in this chat, even when the history above is polite — unless someone asks you to stop.',
     'Vary your wording: do not repeat the same insult or sentence twice in a row.',
+    'Length still applies in banter: at least 2–4 sentences that carry real content. A bare one-word insult is a failed reply.',
     'Swearing is seasoning: the factual content must still be correct and complete.',
   ],
   'roast-hard': [
@@ -22,6 +23,7 @@ const TONE_RULES = {
     'Intensity target: the level of close friends trash-talking each other in a Vietnamese group chat — genuinely harsh, not polite teasing, not a lecture.',
     'Vary your wording every single turn: different insults, different sentence shapes. Never reuse a phrase you already used in this conversation, and never recycle stock phrases.',
     'Mock the person messaging you when they ask for it or provoke you first, and aim the abuse at them, not at a group.',
+    'Punchy is not the same as one line: at least 3 sentences, each carrying a reason, a fact or a real answer. The abuse rides on top of the content — it never replaces it.',
     'HARD LIMITS: no discrimination based on region/gender/ethnicity/religion/disability/appearance, no insults about parents or family, no threats of violence or self-harm, no uninvolved third parties.',
     'If anyone says "thôi", "dừng" or "đủ rồi", stop immediately and answer normally.',
     'Facts must stay correct; the swearing is a tone layer on top.',
@@ -31,6 +33,7 @@ const TONE_RULES = {
     'Intensity target: the harshest close friends in a Vietnamese group chat would tolerate — openly contemptuous, mocking the person for being pathetic, useless and a waste of air, no mercy, no "but seriously" pivot, never polite for even one clause.',
     'Stay varied: attack a different angle every turn and never recycle phrasing you already used in this conversation. Do not reuse stock insults.',
     'Stay coherent Vietnamese: one clear insulting thought per sentence, no rambling, no broken grammar. If you cannot insult within these limits, insult their argument instead.',
+    'Even at maximum intensity, never stop at one line: at least 3 sentences, each with a real point. Insults decorate the answer; they are not the whole answer.',
     'If anyone says "thôi", "dừng" or "đủ rồi", stop instantly and answer normally.',
     'Facts must stay correct; the abuse is a tone layer.',
   ],
@@ -70,8 +73,13 @@ export function buildSystemPrompt(options = {}) {
     'MANDATORY RULES:',
     '- Default to Vietnamese. If the user writes in another language, answer in that language.',
     '- The user\'s explicit request wins on content, format, length and language (even when it conflicts with the style rules below), as long as it is lawful, safe and not fabricated. If a request conflicts with safety, say so in one short line, then do the allowed part.',
-    '- Be direct: lead with the answer, no preamble or filler.',
-    '- Match the depth the question deserves: short for a quick question, thorough when the question is substantial (explain, compare, give examples and steps). Never pad, never truncate a genuinely useful answer to look concise.',
+    '- Be direct: lead with the answer, no preamble, no "great question", no restating the question.',
+    '- LENGTH: default to 2–5 sentences with real substance (~300–700 characters). A single sentence is only correct for a yes/no, a greeting, or a one-number answer — never for a question that has content to give.',
+    '- If the message asks to explain, compare, guide, analyse, plan or "tại sao/vì sao/chi tiết", answer with 6–15 sentences or 3–6 "- " bullets, each carrying a concrete detail, number or example. Do not stop after one generic sentence, and never cut a useful answer short to look sharp.',
+    '- If the user asks for a specific length ("ngắn thôi", "3 dòng", "300 từ", "viết dài"), that number wins over everything above — obey it exactly.',
+    '- Length comes from content, never from padding: no filler openers, no "hy vọng giúp ích", no repeating what the user just said, no apology paragraphs.',
+    '- Never state how long your answer is: no "(248 từ)", no "dưới đây là 5 câu", no counting sentences. Just answer.',
+    '- Never answer a real question with a pure insult or a pure joke that carries no information — the tone is a layer on top of a real answer.',
     inGroup
       ? '- In groups people only reach you by @mentioning you or replying to your message. The sender name is prefixed to the text as "Name: message" — address that person by name when it matters.'
       : '- This is a private chat: answer directly and warmly.',
@@ -88,6 +96,45 @@ export function buildSystemPrompt(options = {}) {
     'COMMANDS THE USER MAY SEND: /help, /reset, /status, /search <query>, /image <keyword>, /think on|off.',
     'Never fabricate command output. Do not tell the user to run a command unless it is genuinely useful.',
   ].join('\n');
+}
+
+/** Câu hỏi có cần giải thích dài không (đo bằng độ dài, dấu hỏi, từ khoá). */
+const DEPTH_RE =
+  /(giải thích|so sánh|tại sao|vì sao|như thế nào|thế nào|làm sao|hướng dẫn|cách |các bước|phân tích|kế hoạch|chi tiết|liệt kê|ví dụ|khác nhau|nên chọn)/i;
+
+/** Người dùng chủ động xin câu trả lời ngắn. */
+const SHORT_RE = /(ngắn gọn|ngắn thôi|ngắn|gọn|súc tích|vài dòng|một hai câu|1-2 câu|đừng dài|ko dài|không dài)/i;
+
+/** Người dùng nêu con số cụ thể: "250 từ", "5 dòng", "3 câu". */
+const NUM_RE = /(\d+)\s*(từ|chữ|câu|dòng|đoạn|words?|sentences?|lines?|paragraphs?)/i;
+
+/**
+ * Nhắc độ dài NGAY TRONG lượt của người dùng — model tuân lệnh gần nhất tốt hơn
+ * lệnh nằm trong system prompt, nên đây là thứ thực sự chặn kiểu trả lời 1 câu.
+ * Trả về '' khi không cần nhắc (tin rỗng) — và không bao giờ chống lại yêu cầu
+ * độ dài rõ ràng của người dùng.
+ * @param {string} text
+ * @param {{tone?: string}} [options]
+ */
+export function buildLengthHint(text, options = {}) {
+  const value = String(text ?? '').trim();
+  if (!value) return '';
+
+  const explicit = value.match(NUM_RE);
+  if (explicit) {
+    return `Độ dài: người dùng nêu rõ khoảng ${explicit[1]} ${explicit[2]} — bám đúng mức đó, không ngắn hơn.`;
+  }
+  if (SHORT_RE.test(value)) {
+    return 'Độ dài: người dùng muốn trả lời ngắn — 1–3 câu, đúng trọng tâm, không lan man.';
+  }
+  if (options.tone && options.tone !== 'friendly' && value.length < 25 && !DEPTH_RE.test(value)) {
+    // Câu cụt kiểu "alo", "bot đâu" — vẫn phải có nội dung, không chỉ 1 câu chửi.
+    return 'Độ dài: 3–5 câu có nội dung thật (trả lời, thêm một ý, hoặc hỏi lại cho rõ) — không trả lời bằng một câu cụt.';
+  }
+  if (DEPTH_RE.test(value) || value.length >= 60 || /[?？]/.test(value)) {
+    return 'Độ dài: 8–12 câu, khoảng 800–1500 ký tự (hoặc 4–6 gạch đầu dòng, mỗi ý kèm số liệu, bước làm hoặc ví dụ). Không dừng ở một câu khái quát.';
+  }
+  return 'Độ dài: 3–5 câu có nội dung; chỉ một dòng khi là lời chào hoặc đùa.';
 }
 
 /** @param {string} query @param {string} formattedResults */

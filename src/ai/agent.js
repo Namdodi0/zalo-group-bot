@@ -11,6 +11,7 @@ import {
 } from '../text/format.js';
 import {
   SUMMARY_SYSTEM_PROMPT,
+  buildLengthHint,
   buildSearchContext,
   buildSummaryInput,
   buildSystemPrompt,
@@ -41,9 +42,15 @@ function isRetryableNimError(error) {
  * Giữ system prompt tĩnh để prefix không đổi giữa các lượt.
  * @param {any[]} messages
  * @param {Date} [date]
+ * @param {string[]} [notes] ghi chú thêm cho lượt này (vd nhắc độ dài)
  */
-function injectTimeContext(messages, date = new Date()) {
-  const stamp = `\n\n[Thời gian hiện tại: ${formatNow(date)}]`;
+function injectTimeContext(messages, date = new Date(), notes = []) {
+  const lines = [`[Thời gian hiện tại: ${formatNow(date)}]`];
+  for (const note of notes) {
+    const clean = String(note ?? '').trim();
+    if (clean) lines.push(`[${clean}]`);
+  }
+  const stamp = `\n\n${lines.join('\n')}`;
   for (let index = messages.length - 1; index >= 0; index -= 1) {
     const message = messages[index];
     if (message?.role !== 'user') continue;
@@ -321,7 +328,9 @@ export function createAgent(deps) {
 
     /** @type {any[]} */
     const messages = [...built.messages];
-    injectTimeContext(messages);
+    // Nhắc độ dài trong chính lượt này: system prompt một mình không đủ, model rất
+    // hay trả lời 1 câu dù prompt đã dặn "đủ ý".
+    injectTimeContext(messages, new Date(), [buildLengthHint(effectiveText, { tone })]);
 
     if (options.forceSearch) {
       const search = await tools.run(

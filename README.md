@@ -13,6 +13,7 @@ Bot chat cho **một nhóm Zalo**, dùng **DeepSeek** (`deepseek-flash` = V4.1 F
 - **Hiểu ảnh** người dùng gửi (DeepSeek Flash và Nemotron Super VL đều nhận ảnh).
 - **Emoji**, định dạng markdown Zalo, chia tin dài ≤ 2000 ký tự.
 - **Giảm độ trễ**: không giới hạn `max_tokens`, `reasoning_effort: none` mặc định (~0 token suy nghĩ), typing indicator, warm-up model, streaming + gửi tách đoạn khi trả lời chậm, cache search/ảnh, retry + circuit breaker.
+- **Trả lời đủ ý, không cụt**: mặc định 3–5 câu; câu hỏi cần giải thích/so sánh/hướng dẫn → 8–12 câu (~800–1500 ký tự) hoặc 4–6 gạch đầu dòng, có số liệu/ví dụ. Nhắc độ dài được chèn **ngay trong lượt gửi model** (system prompt một mình không đủ); yêu cầu ngắn của người dùng (`ngắn thôi`, `250 từ`) luôn thắng.
 - Lệnh: `/help`, `/reset`, `/status`, `/id`, `/search`, `/image`, `/sticker`, `/model`, `/think`, `/ping`.
 
 ## Yêu cầu
