@@ -1,6 +1,6 @@
-﻿{
+{
   "name": "zalo-group-bot",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "private": true,
   "type": "module",
   "description": "Zalo group chatbot powered by NVIDIA NIM (Nemotron 3.5 Super VL) + Tavily web search",

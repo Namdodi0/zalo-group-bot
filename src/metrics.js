@@ -21,6 +21,8 @@ export function createMetrics(options = {}) {
   const counters = new Map();
   /** @type {Map<string, number[]>} */
   const latencies = new Map();
+  /** @type {Map<string, number>} */
+  const gauges = new Map();
 
   /** @param {string} name @param {number} [value] */
   function inc(name, value = 1) {
@@ -37,6 +39,16 @@ export function createMetrics(options = {}) {
     }
     bucket.push(ms);
     if (bucket.length > limit) bucket.shift();
+  }
+
+  /**
+   * Giá trị tức thời (không phải độ trễ): tốc độ sinh token, số chat đang mở…
+   * @param {string} name
+   * @param {number} value
+   */
+  function gauge(name, value) {
+    if (!Number.isFinite(value)) return;
+    gauges.set(name, value);
   }
 
   /**
@@ -68,10 +80,11 @@ export function createMetrics(options = {}) {
       uptimeSec: Math.round((now() - startedAt) / 1000),
       counters: Object.fromEntries(counters),
       latency,
+      gauges: Object.fromEntries(gauges),
     };
   }
 
-  return { inc, observe, recordRequest, get, snapshot, startedAt };
+  return { inc, observe, gauge, recordRequest, get, snapshot, startedAt };
 }
 
 export const __test__ = { percentile };

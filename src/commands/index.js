@@ -67,6 +67,7 @@ export function createCommands(deps) {
         : 'không giới hạn';
     const replyLimit =
       config.maxMessagesPerReply > 0 ? `${config.maxMessagesPerReply} tin` : 'không giới hạn';
+    const generationSpeed = Number(snapshot.gauges?.['llm.tokensPerSec'] ?? 0);
 
     /** @type {string[]} */
     const lines = [
@@ -74,10 +75,10 @@ export function createCommands(deps) {
       `• Model: \`${current.alias}\` — ${current.label} (\`${current.model}\`, ${current.provider})`,
       `• Mode: ${config.mode} · Reasoning: ${config.ai.reasoning} (chat này: ${thinking})`,
       `• max_tokens: ${config.ai.maxTokens ?? 'không giới hạn'}`,
-      `• Uptime: ${formatDuration(snapshot.uptimeSec * 1000)}`,
+      `• Uptime: ${formatDuration(snapshot.uptimeSec * 1000)} · bot v${config.version ?? '?'}`,
       `• Context: ${messages} tin · ${record?.turns ?? 0} lượt · ngân sách: ${contextBudget} · tóm tắt: ${record?.summary ? 'có' : 'chưa'}`,
       `• Giới hạn tin trả lời: ${replyLimit}`,
-      `• Độ trễ LLM: p50 ${nimLatency ? `${nimLatency.p50}ms` : 'n/a'} · p95 ${nimLatency ? `${nimLatency.p95}ms` : 'n/a'}`,
+      `• Độ trễ LLM: p50 ${nimLatency ? `${nimLatency.p50}ms` : 'n/a'} · p95 ${nimLatency ? `${nimLatency.p95}ms` : 'n/a'}${generationSpeed > 0 ? ` · ~${generationSpeed} tok/s` : ''}`,
       `• Phản hồi: p50 ${replyLatency ? `${replyLatency.p50}ms` : 'n/a'} · p95 ${replyLatency ? `${replyLatency.p95}ms` : 'n/a'}`,
       `• Tin nhận: ${count('messages.in')} · Đã trả lời: ${count('messages.replied')} · Lỗi: ${count('messages.error')}`,
       `• Web search: ${config.search.enabled ? `${config.search.depth}/${config.search.maxResults} (auto: ${config.search.auto ? 'on' : 'off'})` : 'tắt'} · Ảnh: ${config.image.enabled ? 'bật' : 'tắt'}`,

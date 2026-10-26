@@ -64,21 +64,35 @@ Bot tự gọi `setWebhook` nếu có `WEBHOOK_PUBLIC_URL`; nếu không, tự �
 Mặc định log ở dạng **pretty**: giờ + icon + căn cột, có màu khi chạy trong terminal thật.
 
 ```
-18:33:31 🚀 starting zalo-group-bot    mode=polling dryRun=false
+18:33:31 🚀 starting zalo-group-bot    version=1.0.3 mode=polling dryRun=false
 ╭──────────────────────────────────────────────────────────────────────────────────────────────╮
-│ 🤖 Bot deepseek  ·  Zalo group chatbot                                                       │
+│ 🤖 Bot deepseek  ·  v1.0.3  ·  Zalo group chatbot                                            │
 │ 🧠 DeepSeek V4.1 Flash · deepseek/deepseek-flash  (fallback: nim-light) │
 │ ⚙️  polling · reasoning=none · max_tokens=không giới hạn                                     │
 │ 🔎 search=fast/4 · emoji=on · typing=on · progressive=auto                                   │
 │ 📚 context không giới hạn · trả lời không giới hạn tin                                       │
 ╰──────────────────────────────────────────────────────────────────────────────────────────────╯
-18:33:31 🤖 zalo bot ready             id=2214705736200876533 name="Bot deepseek" groups=true
+18:33:31 🤖 zalo bot ready             version=1.0.3 id=2214705736200876533 name="Bot deepseek" groups=true
 18:33:31 📡 polling started            mode=long-poll timeoutSec=30
 18:33:31 ⚡  nim warmup done            ms=394
 18:33:45 💬 incoming message           chatId=g1 from="Nam" kind=text len=12
 18:33:46 🔍 web search                 query="giá vàng hôm nay" results=4
-18:33:47 ✅ replied                    ms=1840 messages=1 kept=4 reasoning=none model=deepseek provider=deepseek
+18:33:47 ✅ replied                    ms=1840 llmMs=1712 tps=48.6 tokens=83 chars=612 messages=1 model=deepseek provider=deepseek
 ```
+
+Mỗi dòng log đều có `version=` (lấy từ `package.json`) — panel tự `git pull` nên nhìn log là biết đang chạy bản nào.
+
+Dòng `replied` có thêm:
+
+| Field | Ý nghĩa |
+|---|---|
+| `ms` | tổng thời gian xử lý lượt (từ lúc nhận tin đến khi gửi xong) |
+| `llmMs` | thời gian gọi LLM (cộng dồn cả vòng tool call), không tính mạng Zalo |
+| `tps` | tốc độ sinh chữ: `completion tokens / thời gian sinh thật` (đã trừ TTFT) |
+| `tokens` | số token model sinh ra (`usage.completion_tokens`) |
+| `chars` | độ dài câu trả lời (ký tự) |
+
+`LOG_LEVEL=debug` in thêm `llm response` cho từng lần gọi: `ms`, `ttft`, `tps`, `promptTokens`, `completionTokens`, `finish`, `toolCalls`. `/status` trong chat cũng hiện version + `~tok/s` gần nhất.
 
 - `LOG_FORMAT=json` (hoặc flag `--json`) → mỗi sự kiện một dòng JSON, tiện ghi file/parse.
 - `LOG_COLOR=auto|always|never` → `auto` bật màu khi stdout là terminal, tắt khi pipe/CI.

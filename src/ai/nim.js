@@ -39,6 +39,20 @@ function parseChoice(choice) {
 }
 
 /**
+ * Tốc độ sinh token: completion tokens chia cho thời gian sinh thật (đã trừ TTFT
+ * nếu có), làm tròn 1 chữ số thập phân.
+ * @param {number} tokens
+ * @param {number} ms
+ * @returns {number}
+ */
+function tokensPerSec(tokens, ms) {
+  const count = Number(tokens);
+  const time = Number(ms);
+  if (!Number.isFinite(count) || !Number.isFinite(time) || count <= 0 || time <= 0) return 0;
+  return Math.round((count / (time / 1000)) * 10) / 10;
+}
+
+/**
  * Map mode chung (none/low/medium/high/auto) sang giá trị `reasoning_effort`
  * mà từng provider chấp nhận. DeepSeek chỉ nhận none|low|high|max.
  * @param {string} mode
@@ -133,6 +147,10 @@ export function createLlmClient(options) {
       metrics?.inc('llm.promptTokens', usage?.prompt_tokens ?? 0);
       metrics?.inc('llm.completionTokens', usage?.completion_tokens ?? 0);
       metrics?.observe('llm.latency', latency());
+      const ms = latency();
+      const completionTokens = Number(usage?.completion_tokens ?? 0);
+      const tps = tokensPerSec(completionTokens, ms);
+      if (tps) metrics?.gauge?.('llm.tokensPerSec', tps);
       logger.debug('llm response', {
         provider,
         model: payload.model,
@@ -141,9 +159,19 @@ export function createLlmClient(options) {
         promptTokens: usage?.prompt_tokens,
         completionTokens: usage?.completion_tokens,
         reasoningTokens: usage?.completion_tokens_details?.reasoning_tokens,
-        ms: latency(),
+        ms,
+        tps,
       });
-      return { ...parsed, usage, latencyMs: latency(), aborted: false };
+      return {
+        ...parsed,
+        usage,
+        latencyMs: ms,
+        completionTokens,
+        ttftMs: ms,
+        completionMs: ms,
+        tokensPerSec: tps,
+        aborted: false,
+      };
     }
 
     payload.stream = true;
@@ -188,6 +216,8 @@ export function createLlmClient(options) {
     let content = '';
     let reasoning = '';
     let finishReason = '';
+    /** @type {number} mốc nhận được token nội dung đầu tiên (để tính TTFT thật) */
+    let firstDeltaAt = 0;
     /** @type {any} */
     let usage = null;
     /** @type {Map<number, {id: string, name: string, args: string}>} */
@@ -226,6 +256,7 @@ export function createLlmClient(options) {
                     if (choice.finish_reason) finishReason = String(choice.finish_reason);
                     if (typeof delta.content === 'string' && delta.content) {
                       content += delta.content;
+                      if (!firstDeltaAt) firstDeltaAt = Date.now();
                       if (input.onDelta) await input.onDelta(delta.content);
                     }
                     if (typeof delta.reasoning_content === 'string' && delta.reasoning_content) {
@@ -289,13 +320,40 @@ export function createLlmClient(options) {
     if (usage?.completion_tokens) metrics?.inc('llm.completionTokens', usage.completion_tokens);
     metrics?.observe('llm.latency', latency());
 
+    const ms = latency();
+    const completionTokens = Number(usage?.completion_tokens ?? 0);
+    // TTFT = từ lúc gửi request tới token nội dung đầu tiên; phần còn lại mới là
+    // thời gian sinh thật, nên tốc độ tok/s tính trên completionMs chứ không phải ms.
+    const firstTokenMs = firstDeltaAt ? firstDeltaAt - started : ms;
+    const completionMs = Math.max(0, ms - firstTokenMs);
+    const tps = tokensPerSec(completionTokens, completionMs || ms);
+    if (tps) metrics?.gauge?.('llm.tokensPerSec', tps);
+    logger.debug('llm response', {
+      provider,
+      model: payload.model,
+      stream: true,
+      finish: finishReason,
+      toolCalls: toolCalls.length,
+      promptTokens: usage?.prompt_tokens,
+      completionTokens: usage?.completion_tokens,
+      reasoningTokens: usage?.completion_tokens_details?.reasoning_tokens,
+      ms,
+      ttft: firstTokenMs,
+      tps,
+      ...(streamError ? { error: String(/** @type {any} */ (streamError)?.message ?? streamError) } : {}),
+    });
+
     return {
       content,
       reasoning,
       toolCalls,
       finishReason,
       usage,
-      latencyMs: latency(),
+      latencyMs: ms,
+      completionTokens,
+      ttftMs: firstTokenMs,
+      completionMs,
+      tokensPerSec: tps,
       aborted: Boolean(streamError),
       streamError: streamError ? String(/** @type {any} */ (streamError)?.message ?? streamError) : undefined,
     };
@@ -323,4 +381,4 @@ export function createLlmClient(options) {
   return { chat, warmup, model, endpoint, provider };
 }
 
-export const __test__ = { parseChoice, reasoningEffort };
+export const __test__ = { parseChoice, reasoningEffort, tokensPerSec };

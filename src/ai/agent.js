@@ -365,6 +365,11 @@ export function createAgent(deps) {
 
     let finalText = '';
     let aborted = false;
+    // Thống kê LLM của lượt này để log: tổng thời gian gọi, thời gian sinh thật (đã trừ TTFT),
+    // số token sinh ra → tok/s. Cộng dồn qua các vòng tool call.
+    let llmMs = 0;
+    let completionMs = 0;
+    let completionTokens = 0;
 
     for (let round = 0; round < MAX_TOOL_ROUNDS; round += 1) {
       const remaining = deadline - Date.now();
@@ -453,6 +458,10 @@ export function createAgent(deps) {
         throw lastError ?? new Error('NIM không phản hồi');
       }
 
+      llmMs += Number(response.latencyMs ?? 0) || 0;
+      completionMs += Number(response.completionMs ?? response.latencyMs ?? 0) || 0;
+      completionTokens += Number(response.completionTokens ?? response.usage?.completion_tokens ?? 0) || 0;
+
       if (response.toolCalls?.length) {
         metrics.inc('llm.toolRounds');
         messages.push({
@@ -501,11 +510,19 @@ export function createAgent(deps) {
     store.touch(event.chatId);
 
     const duration = Date.now() - startedAt;
+    const tps =
+      completionTokens > 0 && completionMs > 0
+        ? Math.round((completionTokens / (completionMs / 1000)) * 10) / 10
+        : 0;
     metrics.observe('agent.reply', duration);
     metrics.inc('messages.replied');
     logger.info('replied', {
       chatId: event.chatId,
       ms: duration,
+      llmMs,
+      tps,
+      tokens: completionTokens,
+      chars: finalText.length,
       ...(aborted ? { aborted: true } : {}),
       messages: sender.sent(),
       kept: built.keptMessages,

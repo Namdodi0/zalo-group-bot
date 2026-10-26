@@ -18,7 +18,7 @@ function report(label, ok, detail = '') {
 async function main() {
   loadEnvFiles();
   const config = loadConfig();
-  const logger = createLogger({ level: 'warn' });
+  const logger = createLogger({ level: 'warn', version: config.version });
   const metrics = createMetrics();
   const httpClient = createHttp({ logger, metrics });
 

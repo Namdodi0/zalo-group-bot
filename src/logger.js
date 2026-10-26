@@ -191,7 +191,7 @@ function formatPretty(record, color) {
  */
 
 /**
- * @param {{level?: string, format?: 'pretty'|'json', color?: 'auto'|'always'|'never', secrets?: string[], stdout?: NodeJS.WritableStream, stderr?: NodeJS.WritableStream, now?: () => Date}} [options]
+ * @param {{level?: string, format?: 'pretty'|'json', color?: 'auto'|'always'|'never', secrets?: string[], version?: string, stdout?: NodeJS.WritableStream, stderr?: NodeJS.WritableStream, now?: () => Date}} [options]
  * @returns {Logger}
  */
 export function createLogger(options = {}) {
@@ -202,6 +202,8 @@ export function createLogger(options = {}) {
   const stdout = options.stdout ?? process.stdout;
   const stderr = options.stderr ?? process.stderr;
   const now = options.now ?? (() => new Date());
+  /** Gắn version vào MỌI dòng log: panel tự git pull nên phải biết đang chạy bản nào. */
+  const rootBindings = /** @type {Record<string, unknown>} */ (options.version ? { version: options.version } : {});
 
   /**
    * @param {Record<string, unknown>} bindings
@@ -239,7 +241,7 @@ export function createLogger(options = {}) {
     };
   }
 
-  return make({});
+  return make(rootBindings);
 }
 
 /**

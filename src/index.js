@@ -14,6 +14,7 @@ import { createImageValidator } from './media/validate.js';
 import { createMetrics } from './metrics.js';
 import { createTavilyClient } from './search/tavily.js';
 import { createZaloClient } from './zalo/client.js';
+import { VERSION } from './version.js';
 import { startPolling } from './zalo/polling.js';
 import { createWebhookServer } from './zalo/webhook.js';
 
@@ -34,6 +35,7 @@ async function main() {
     format: config.logFormat,
     color: config.logColor,
     secrets: collectSecrets(config),
+    version: config.version,
   });
   const metrics = createMetrics();
 
@@ -47,7 +49,11 @@ async function main() {
       ...(file.error ? { error: file.error } : {}),
     })),
   });
-  logger.info('starting zalo-group-bot', { mode: config.mode, ...(config.dryRun ? { dryRun: true } : {}), icon: '🚀' });
+  logger.info('starting zalo-group-bot', {
+    mode: config.mode,
+    ...(config.dryRun ? { dryRun: true } : {}),
+    icon: '🚀',
+  });
 
   const httpClient = createHttp({ logger, metrics });
 
@@ -128,7 +134,7 @@ async function main() {
       printBanner(
         process.stdout,
         [
-          `🤖 ${zalo.displayName || 'Bot Zalo'}  ·  Zalo group chatbot`,
+          `🤖 ${zalo.displayName || 'Bot Zalo'}  ·  v${config.version}  ·  Zalo group chatbot`,
           `🧠 ${primary.label} · ${primary.provider}/${primary.model}  (fallback: ${fallback.alias})`,
           `⚙️  ${config.mode} · reasoning=${config.ai.reasoning} · max_tokens=${config.ai.maxTokens ?? 'không giới hạn'}`,
           `🔎 search=${config.search.enabled ? `${config.search.depth}/${config.search.maxResults}${config.search.auto ? '' : ' (auto off)'}` : 'off'} · emoji=${config.emoji ? 'on' : 'off'} · typing=${config.typing ? 'on' : 'off'} · progressive=${config.progressive} · sticker=${config.sticker.enabled ? 'on' : 'off'}`,
@@ -326,7 +332,8 @@ async function main() {
 
 main().catch((error) => {
   const message = error instanceof Error ? error.message : String(error);
-  process.stderr.write(`fatal: ${message}\n`);
+  // Có version cả ở nhánh lỗi: log panel chỉ hiện vài dòng cuối, phải biết đang chạy bản nào.
+  process.stderr.write(`fatal [v${VERSION}]: ${message}\n`);
   if (error instanceof ConfigError) {
     // Chỉ ra đã tìm .env ở đâu, file nào thiếu → khỏi đoán mò trên panel.
     const hints = describeEnvHints();

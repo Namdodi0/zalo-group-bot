@@ -35,7 +35,12 @@ const config = loadConfig({
   argv: [],
   env: { ...process.env, LOG_LEVEL: process.env.LOG_LEVEL ?? 'warn' },
 });
-const logger = createLogger({ level: config.logLevel });
+const logger = createLogger({
+  level: config.logLevel,
+  format: config.logFormat,
+  color: config.logColor,
+  version: config.version,
+});
 const metrics = createMetrics();
 const httpClient = createHttp({ logger, metrics });
 

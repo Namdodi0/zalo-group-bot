@@ -4,6 +4,7 @@ import { parseArgs } from 'node:util';
 import crypto from 'node:crypto';
 import { DEFAULT_ALIAS, FALLBACK_ALIAS, MODEL_ALIASES, isKnownAlias } from './ai/models.js';
 import { parseStickerIds } from './ai/stickers.js';
+import { VERSION } from './version.js';
 
 /** @typedef {'polling'|'webhook'} TransportMode */
 /** @typedef {'none'|'low'|'medium'|'high'|'auto'} ReasoningMode */
@@ -271,6 +272,7 @@ export function loadConfig(input = {}) {
 
   const config = {
     help: false,
+    version: VERSION,
     token,
     zalo: {
       token,
@@ -394,6 +396,7 @@ export function describeConfig(config) {
   const fallback = MODEL_ALIASES[config.model.fallbackAlias];
   const fallbackModel = fallback ? config[fallback.provider]?.[fallback.modelKey] : '';
   return {
+    version: config.version,
     mode: config.mode,
     model: `${config.model.defaultAlias} (${primaryModel})`,
     fallbackModel: fallback ? `${config.model.fallbackAlias} (${fallbackModel || 'off'})` : 'off',
