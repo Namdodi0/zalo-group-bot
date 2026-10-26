@@ -389,6 +389,8 @@ export function createAgent(deps) {
         if (left < 1500) break;
         // TTFT tối đa ~9s: nếu NIM treo thì bỏ và retry sớm thay vì chờ hết ngân sách.
         const attemptTimeout = Math.max(4000, Math.min(config.ai.timeoutMs, Math.floor(left / 2), 9000));
+        // Đo cả lần gọi thất bại: llmMs là tổng thời gian thực sự tiêu vào LLM.
+        const callStarted = Date.now();
         try {
           response = await llm.chat({
             record,
@@ -403,7 +405,9 @@ export function createAgent(deps) {
             timeoutMs: streaming ? left : Math.max(4000, Math.min(config.ai.timeoutMs, left)),
             signal: AbortSignal.timeout(left),
           });
+          llmMs += Date.now() - callStarted;
         } catch (error) {
+          llmMs += Date.now() - callStarted;
           lastError = error;
           if (!isRetryableNimError(error) || attempt === 1) break;
           metrics.inc('llm.retries');
@@ -427,6 +431,7 @@ export function createAgent(deps) {
           left = deadline - Date.now();
         }
         if (left > 2000) {
+          const fallbackStarted = Date.now();
           try {
             response = await llm.chatWith(llm.fallbackAlias, {
               messages,
@@ -437,6 +442,7 @@ export function createAgent(deps) {
               timeoutMs: Math.max(1500, Math.min(config.ai.timeoutMs, left - 500)),
               signal: AbortSignal.timeout(left),
             });
+            llmMs += Date.now() - fallbackStarted;
             metrics.inc('llm.fallback');
             logger.warn('llm fallback (không tool) thành công', {
               chatId: event.chatId,
@@ -444,6 +450,7 @@ export function createAgent(deps) {
               icon: '🛟',
             });
           } catch (error) {
+            llmMs += Date.now() - fallbackStarted;
             lastError = error;
           }
         }
@@ -458,7 +465,6 @@ export function createAgent(deps) {
         throw lastError ?? new Error('NIM không phản hồi');
       }
 
-      llmMs += Number(response.latencyMs ?? 0) || 0;
       completionMs += Number(response.completionMs ?? response.latencyMs ?? 0) || 0;
       completionTokens += Number(response.completionTokens ?? response.usage?.completion_tokens ?? 0) || 0;
 
