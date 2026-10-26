@@ -130,3 +130,29 @@ test('bỏ reasoning_content khỏi kết quả trả về', async () => {
   assert.equal(result.content, 'Đáp án');
   assert.equal(result.reasoning, 'suy nghĩ nội bộ');
 });
+
+test('warmup: trả {ok, ms, model}, 1 token, dùng được model override', async () => {
+  const http = fakeHttp([], standardResponse);
+  const client = makeClient(http);
+
+  const result = await client.warmup();
+  assert.equal(result.ok, true);
+  assert.ok(result.ms >= 0);
+  assert.equal(result.model, 'nvidia/nemotron-3.5-super-vl-120b-a12b');
+  assert.equal(http.calls[0].payload.max_tokens, 1);
+  assert.equal(http.calls[0].payload.temperature, 0);
+
+  await client.warmup({ model: 'nvidia/nemotron-3-ultra-550b-a55b' });
+  assert.equal(http.calls[1].payload.model, 'nvidia/nemotron-3-ultra-550b-a55b');
+});
+
+test('warmup: lỗi mạng thì trả ok:false, KHÔNG throw', async () => {
+  const client = makeClient({
+    async requestJson() {
+      throw new Error('timeout after nim request');
+    },
+  });
+  const result = await client.warmup();
+  assert.equal(result.ok, false);
+  assert.match(result.error, /timeout after nim request/);
+});

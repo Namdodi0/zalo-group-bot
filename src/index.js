@@ -165,15 +165,37 @@ async function main() {
   }
 
   if (!config.dryRun) {
+    // Warmup TUẦN TỰ, mỗi cặp provider+model đúng 1 lần.
+    // Trước đây 2 alias (nim, nim-light) cùng provider nên warmup chạy SONG SONG 2 request
+    // tới NIM → request thứ hai bị xếp hàng rồi timeout 20s, log ra "warmup failed" oan.
+    const warmTargets = [];
     for (const alias of new Set([models.defaultAlias, models.fallbackAlias])) {
       const target = models.find(alias);
       const client = target ? clients[target.provider] : null;
       if (!client) continue;
-      client
-        .warmup()
-        .then((ms) => logger.info('llm warmup done', { alias, provider: target.provider, ms, icon: '⚡' }))
-        .catch((error) => logger.warn('llm warmup error', { alias, error, icon: '⚡' }));
+      const key = `${target.provider}:${target.model}`;
+      if (warmTargets.some((item) => item.key === key)) continue;
+      warmTargets.push({ key, alias, target, client });
     }
+    // Không await: warmup chạy nền, bot vào polling ngay.
+    (async () => {
+      for (const item of warmTargets) {
+        const result = await item.client.warmup({ model: item.target.model });
+        const fields = {
+          alias: item.alias,
+          provider: item.target.provider,
+          model: item.target.model,
+          ms: result.ms,
+          icon: '⚡',
+        };
+        if (result.ok) {
+          logger.info('llm warmup done', fields);
+        } else {
+          // Warmup là tối ưu, thất bại không ảnh hưởng gì → để mức debug cho đỡ hoang mang.
+          logger.debug('llm warmup bỏ qua (không ảnh hưởng)', { ...fields, error: result.error });
+        }
+      }
+    })();
   }
 
   const controller = new AbortController();

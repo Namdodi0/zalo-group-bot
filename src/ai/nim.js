@@ -359,22 +359,36 @@ export function createLlmClient(options) {
     };
   }
 
-  async function warmup() {
+  /**
+   * Gọi 1 request cực ngắn để "làm nóng" model, giảm cold start cho tin đầu tiên.
+   * Không bao giờ throw và không log ồn: warmup là tối ưu, không phải điều kiện sống còn.
+   * @param {{model?: string, timeoutMs?: number}} [options]
+   * @returns {Promise<{ok: boolean, ms: number, model: string, error?: string}>}
+   */
+  async function warmup(options = {}) {
+    const targetModel = options.model ?? model;
     const started = Date.now();
     try {
       await chat({
+        model: targetModel,
         messages: [{ role: 'user', content: 'Reply with the single word: OK' }],
         reasoning: 'none',
         maxTokens: 1,
         temperature: 0,
-        timeoutMs: 20_000,
+        // Ngắn thôi: model treo thì bỏ, tin nhắn thật vẫn chạy bình thường.
+        timeoutMs: options.timeoutMs ?? 8_000,
       });
       const ms = Date.now() - started;
       metrics?.observe('llm.warmup', ms);
-      return ms;
+      metrics?.gauge?.('llm.warmupMs', ms);
+      return { ok: true, ms, model: targetModel };
     } catch (error) {
-      logger.warn('llm warmup failed', { provider, error: String(/** @type {any} */ (error)?.message ?? error) });
-      return -1;
+      return {
+        ok: false,
+        ms: Date.now() - started,
+        model: targetModel,
+        error: String(/** @type {any} */ (error)?.message ?? error),
+      };
     }
   }
 
