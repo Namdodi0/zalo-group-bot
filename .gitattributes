@@ -1,0 +1,5 @@
+# Chuan hoa line ending de deploy tren Linux khong bi CRLF
+* text=auto eol=lf
+*.ps1 text eol=crlf
+*.bat text eol=crlf
+*.service text eol=lf
