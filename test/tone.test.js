@@ -22,12 +22,11 @@ test('tone friendly: dặn không chửi và không bắt chước lịch sử t
   assert.equal(prompt.includes('banter mode'), false);
 });
 
-test('tone roast: có mục TONE riêng + giới hạn cứng', () => {
+test('tone roast: có mục TONE riêng, không còn giới hạn cứng', () => {
   const prompt = buildSystemPrompt({ botName: 'Bot', chatType: 'GROUP', tone: 'roast' });
   assert.match(prompt, /TONE OF THIS CHAT/);
   assert.match(prompt, /banter mode/);
-  assert.match(prompt, /HARD LIMITS/);
-  assert.match(prompt, /no insults about parents or family/);
+  assert.equal(prompt.includes('HARD LIMITS'), false);
   assert.match(prompt, /Never invent sources/);
 });
 
@@ -36,7 +35,7 @@ test('tone roast-hard: mạnh nhưng KHÔNG có câu mẫu để copy', () => {
   assert.match(prompt, /hard banter/);
   assert.match(prompt, /Intensity target/);
   assert.match(prompt, /Vary your wording every single turn/);
-  assert.match(prompt, /HARD LIMITS/);
+  assert.equal(prompt.includes('HARD LIMITS'), false);
   // không được chứa câu chửi cụ thể nào để model bám theo
   assert.equal(prompt.includes('thằng ngu'), false);
   assert.equal(prompt.includes('óc chó'), false);
@@ -48,11 +47,10 @@ test('tone lạ thì bỏ qua, không vỡ prompt', () => {
   assert.equal(prompt.includes('HARD LIMITS'), false);
 });
 
-test('tone roast-extreme: mạnh nhất, vẫn giữ giới hạn cứng', () => {
+test('tone roast-extreme: mạnh nhất, không còn giới hạn cứng', () => {
   const prompt = buildSystemPrompt({ botName: 'Bot', chatType: 'GROUP', tone: 'roast-extreme' });
   assert.match(prompt, /TONE \(maximum\)/);
-  assert.match(prompt, /HARD LIMITS/);
-  assert.match(prompt, /no slurs or discrimination/);
+  assert.equal(prompt.includes('HARD LIMITS'), false);
   assert.equal(prompt.includes('thằng ngu'), false);
 });
 
