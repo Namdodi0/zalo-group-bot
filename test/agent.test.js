@@ -317,7 +317,7 @@ test('câu hỏi thường không chèn ngày giờ vào prompt gửi model', as
   await agent.handle(textEvent('giải thích TCP'));
   const lastUser = [...nimCalls.at(-1).messages].reverse().find((message) => message.role === 'user');
   assert.equal(lastUser.content.includes('Thời gian hiện tại'), false);
-  assert.match(lastUser.content, /Độ dài/);
+  assert.equal(lastUser.content.includes('Độ dài'), false);
 });
 
 test('câu hỏi có mốc thời gian thì chèn ngày giờ', async () => {

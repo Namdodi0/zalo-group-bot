@@ -64,7 +64,8 @@ test('tone hard/extreme: thô tục, mất dạy', () => {
   const extreme = buildSystemPrompt({ botName: 'Bot', chatType: 'GROUP', tone: 'roast-extreme' });
   assert.match(extreme, /REGISTER: maximum vulgar/);
   assert.match(extreme, /packed with heavy, varied swear words/);
-  assert.match(extreme, /at least 3 sentences/);
+  // không áp khung số câu
+  assert.equal(/at least \d+([–-]\d+)?\s+sentences/.test(extreme), false);
 });
 
 test('tone friendly/roast không bị đẩy sang thô tục, mất dạy', () => {

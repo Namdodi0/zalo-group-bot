@@ -86,20 +86,26 @@ test('luật nhớ/trả lời đúng áp dụng cho mọi tone', () => {
   }
 });
 
-test('có chính sách độ dài rõ ràng (không phải càng ngắn càng tốt)', () => {
+test('không áp khung câu nào lên câu trả lời', () => {
   const prompt = groupPrompt();
   assert.equal(/at most \d+ characters/.test(prompt), false);
   assert.equal(prompt.includes('3 paragraphs'), false);
   assert.match(prompt, /no preamble/);
-  assert.match(prompt, /LENGTH: default to 2–5 sentences/);
-  assert.match(prompt, /never cut a useful answer short/);
+  assert.match(prompt, /LENGTH: no fixed sentence count and no character target/);
+  assert.match(prompt, /one line is fine for a quick fact/);
   assert.match(prompt, /specific length/);
+  // tuyệt đối không còn khung số câu
+  assert.equal(/(at least|default to|answer with)\s+\d+([–-]\d+)?\s+sentences/.test(prompt), false);
+  assert.equal(/\d+[–-]\d+\s+sentences/.test(prompt), false);
+  assert.equal(/\d+[–-]\d+\s+characters/.test(prompt), false);
 });
 
-test('mọi tone đều có sàn độ dài: không trả lời 1 câu', () => {
-  assert.match(groupPrompt({ tone: 'roast' }), /at least 2–4 sentences/);
-  assert.match(groupPrompt({ tone: 'roast-hard' }), /at least 3 sentences/);
-  assert.match(groupPrompt({ tone: 'roast-extreme' }), /at least 3 sentences/);
+test('mọi tone đều không có khung số câu', () => {
+  for (const tone of ['friendly', 'roast', 'roast-hard', 'roast-extreme']) {
+    const prompt = groupPrompt({ tone });
+    assert.equal(/at least \d+([–-]\d+)?\s+sentences/.test(prompt), false, `tone ${tone}`);
+    assert.equal(/\d+[–-]\d+\s+sentences/.test(prompt), false, `tone ${tone}`);
+  }
 });
 
 test('system prompt tĩnh: không chèn ngày giờ cụ thể', () => {
@@ -145,20 +151,19 @@ test('search context và summary prompt vẫn ổn', () => {
   assert.match(SUMMARY_SYSTEM_PROMPT, /in Vietnamese/);
 });
 
-test('buildLengthHint: câu hỏi cần giải thích thì đòi 8–12 câu', () => {
-  assert.match(buildLengthHint('giải thích cách TCP hoạt động'), /8–12 câu/);
-  assert.match(buildLengthHint('tại sao trời xanh?'), /8–12 câu/);
-  assert.match(buildLengthHint('một câu hỏi rất dài '.repeat(5)), /8–12 câu/);
+test('buildLengthHint: không áp khung câu cho câu hỏi thường', () => {
+  assert.equal(buildLengthHint('giải thích cách TCP hoạt động'), '');
+  assert.equal(buildLengthHint('tại sao trời xanh?'), '');
+  assert.equal(buildLengthHint('một câu hỏi rất dài '.repeat(5)), '');
+  assert.equal(buildLengthHint('alo'), '');
+  assert.equal(buildLengthHint('bot đâu'), '');
 });
 
-test('buildLengthHint: câu cụt trong group vẫn phải 3–5 câu', () => {
-  assert.match(buildLengthHint('alo', { tone: 'roast-hard' }), /3–5 câu/);
-  assert.match(buildLengthHint('bot đâu', { tone: 'roast' }), /3–5 câu/);
-});
-
-test('buildLengthHint: yêu cầu ngắn của người dùng được tôn trọng', () => {
-  assert.match(buildLengthHint('giải thích TCP ngắn thôi'), /1–3 câu/);
-  assert.match(buildLengthHint('tóm tắt súc tích'), /1–3 câu/);
+test('buildLengthHint: yêu cầu ngắn của người dùng được tôn trọng (không kèm số câu)', () => {
+  const hint = buildLengthHint('giải thích TCP ngắn thôi');
+  assert.match(hint, /trả lời ngắn/);
+  assert.equal(/\d+[–-]\d+\s*câu/.test(hint), false);
+  assert.match(buildLengthHint('tóm tắt súc tích'), /trả lời ngắn/);
 });
 
 test('buildLengthHint: nêu số cụ thể thì bám đúng số đó', () => {
