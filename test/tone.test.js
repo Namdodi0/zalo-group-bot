@@ -49,7 +49,7 @@ test('tone lạ thì bỏ qua, không vỡ prompt', () => {
 
 test('tone roast-extreme: mạnh nhất, không còn giới hạn cứng', () => {
   const prompt = buildSystemPrompt({ botName: 'Bot', chatType: 'GROUP', tone: 'roast-extreme' });
-  assert.match(prompt, /TONE \(maximum\)/);
+  assert.match(prompt, /TONE \(absolute maximum\)/);
   assert.equal(prompt.includes('HARD LIMITS'), false);
   assert.equal(prompt.includes('thằng ngu'), false);
 });
@@ -62,8 +62,11 @@ test('tone hard/extreme: thô tục, mất dạy', () => {
   assert.match(hard, /every turn, whether they ask for it or not/);
 
   const extreme = buildSystemPrompt({ botName: 'Bot', chatType: 'GROUP', tone: 'roast-extreme' });
-  assert.match(extreme, /REGISTER: maximum profanity, zero manners/);
-  assert.match(extreme, /Every sentence carries heavy swearing/);
+  assert.match(extreme, /REGISTER: maximum vulgar/);
+  assert.match(extreme, /packed with heavy, varied swear words/);
+  assert.match(extreme, /at least 3 sentences/);
+  // không bao giờ được có nội dung đe dọa bạo lực thật
+  assert.equal(/threaten(ing)? (to )?(kill|rape)/i.test(extreme), false);
 });
 
 test('tone friendly/roast không bị đẩy sang thô tục, mất dạy', () => {
