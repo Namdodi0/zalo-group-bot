@@ -24,7 +24,7 @@ test('prompt viết tiếng Anh nhưng buộc trả lời tiếng Việt', () =>
 test('có luật làm theo yêu cầu người dùng', () => {
   const prompt = groupPrompt();
   assert.match(prompt, /user's explicit request wins/);
-  assert.match(prompt, /lawful, safe and not fabricated/);
+  assert.match(prompt, /content, format, length and language/);
 });
 
 test('có chính sách độ dài rõ ràng (không phải càng ngắn càng tốt)', () => {
