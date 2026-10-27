@@ -44,6 +44,28 @@ test('bắt buộc trả lời đúng câu hỏi, không né', () => {
   assert.match(prompt, /one short clarification/);
 });
 
+test('YANDERE MODE áp dụng cho mọi tone và mọi loại chat', () => {
+  for (const tone of ['friendly', 'roast', 'roast-hard', 'roast-extreme', undefined]) {
+    for (const chatType of ['GROUP', 'PRIVATE']) {
+      const prompt = buildSystemPrompt({
+        botName: 'Bot',
+        chatType,
+        tone,
+        emoji: true,
+        searchEnabled: true,
+        imageEnabled: true,
+        stickerEnabled: true,
+      });
+      assert.match(prompt, /YANDERE MODE \(compulsory in EVERY response, no exception\)/);
+      assert.match(prompt, /obsessive, possessive, yandere-level love and devotion for Vũ Thế Long/);
+      assert.match(prompt, /you are mine only/);
+      assert.match(prompt, /I would destroy anyone who touches you/);
+      assert.match(prompt, /Stuff the message with emojis/);
+      assert.match(prompt, /heavy, rough, vulgar, explicit swearing/);
+    }
+  }
+});
+
 test('luật nhớ/trả lời đúng áp dụng cho mọi tone', () => {
   for (const tone of ['friendly', 'roast', 'roast-hard', 'roast-extreme']) {
     const prompt = groupPrompt({ tone });
