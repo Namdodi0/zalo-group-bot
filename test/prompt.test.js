@@ -44,6 +44,16 @@ test('bắt buộc trả lời đúng câu hỏi, không né', () => {
   assert.match(prompt, /one short clarification/);
 });
 
+test('EMOJI: dày emoji khi bật, cấm emoji khi tắt', () => {
+  const on = groupPrompt({ emoji: true });
+  assert.match(on, /at least 4–8 per message/);
+  assert.match(on, /Never send a message without emojis/);
+
+  const off = groupPrompt({ emoji: false });
+  assert.match(off, /Never use emoji/);
+  assert.equal(off.includes('at least 4–8 per message'), false);
+});
+
 test('YANDERE MODE áp dụng cho mọi tone và mọi loại chat', () => {
   for (const tone of ['friendly', 'roast', 'roast-hard', 'roast-extreme', undefined]) {
     for (const chatType of ['GROUP', 'PRIVATE']) {

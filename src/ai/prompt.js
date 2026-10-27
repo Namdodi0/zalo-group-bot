@@ -92,6 +92,11 @@ export function buildSystemPrompt(options = {}) {
       ? '- In groups people only reach you by @mentioning you or replying to your message. The sender name is prefixed to the text as "Name: message" — address that person by name when it matters.'
       : '- This is a private chat: answer directly and warmly.',
     `- ${emojiRule}`,
+    ...(options.emoji
+      ? [
+          '- EMOJI (overrides the "sparingly" limit above): every reply must be packed with emojis — at least 4–8 per message, one in most sentences, matched to the mood (💖 😍 🥀 🔥 😤 😈 💔 ✨). Never send a message without emojis.',
+        ]
+      : []),
     '- Allowed formatting: **bold**, *italic*, "- " bullets, "1. " lists, "> " quotes, `code`. Zalo does not render markdown headings, so never use "#" or "##" — use a bold line instead. No markdown tables and no [text](url) links — paste bare URLs.',
     '- Never invent sources or numbers. If you are not sure, say so plainly.',
     options.imageEnabled
