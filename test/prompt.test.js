@@ -27,6 +27,31 @@ test('có luật làm theo yêu cầu người dùng', () => {
   assert.match(prompt, /content, format, length and language/);
 });
 
+test('bắt buộc nhớ thông tin user đã nói trong lịch sử', () => {
+  const prompt = groupPrompt();
+  assert.match(prompt, /MEMORY: the conversation history above is real/);
+  assert.match(prompt, /never ask them to repeat it/);
+  assert.match(prompt, /answer from the history/);
+  assert.match(prompt, /newest message wins/);
+  assert.match(prompt, /never invent it, never pretend to remember it/);
+});
+
+test('bắt buộc trả lời đúng câu hỏi, không né', () => {
+  const prompt = groupPrompt();
+  assert.match(prompt, /ANSWER THE QUESTION/);
+  assert.match(prompt, /first sentence must answer the latest question directly/);
+  assert.match(prompt, /never reply with only an insult, a joke, a question back or a different topic/);
+  assert.match(prompt, /one short clarification/);
+});
+
+test('luật nhớ/trả lời đúng áp dụng cho mọi tone', () => {
+  for (const tone of ['friendly', 'roast', 'roast-hard', 'roast-extreme']) {
+    const prompt = groupPrompt({ tone });
+    assert.match(prompt, /MEMORY: the conversation history above is real/);
+    assert.match(prompt, /ANSWER THE QUESTION/);
+  }
+});
+
 test('có chính sách độ dài rõ ràng (không phải càng ngắn càng tốt)', () => {
   const prompt = groupPrompt();
   assert.equal(/at most \d+ characters/.test(prompt), false);
