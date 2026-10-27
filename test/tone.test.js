@@ -54,6 +54,25 @@ test('tone roast-extreme: mạnh nhất, không còn giới hạn cứng', () =>
   assert.equal(prompt.includes('thằng ngu'), false);
 });
 
+test('tone hard/extreme: thô tục, mất dạy', () => {
+  const hard = buildSystemPrompt({ botName: 'Bot', chatType: 'GROUP', tone: 'roast-hard' });
+  assert.match(hard, /REGISTER: vulgar and deliberately ill-mannered/);
+  assert.match(hard, /Swear in most sentences/);
+  assert.match(hard, /No manners/);
+  assert.match(hard, /every turn, whether they ask for it or not/);
+
+  const extreme = buildSystemPrompt({ botName: 'Bot', chatType: 'GROUP', tone: 'roast-extreme' });
+  assert.match(extreme, /REGISTER: maximum profanity, zero manners/);
+  assert.match(extreme, /Every sentence carries heavy swearing/);
+});
+
+test('tone friendly/roast không bị đẩy sang thô tục, mất dạy', () => {
+  const friendly = buildSystemPrompt({ botName: 'Bot', chatType: 'GROUP' });
+  assert.equal(friendly.includes('REGISTER:'), false);
+  const roast = buildSystemPrompt({ botName: 'Bot', chatType: 'GROUP', tone: 'roast' });
+  assert.equal(roast.includes('REGISTER:'), false);
+});
+
 test('BOT_TONE đọc từ env, có alias, mặc định là hard', () => {
   assert.equal(loadConfig({ argv: [], env: { ...baseEnv, BOT_TONE: 'roast' } }).tone, 'roast');
   assert.equal(loadConfig({ argv: [], env: { ...baseEnv, BOT_TONE: 'roast-hard' } }).tone, 'roast-hard');
