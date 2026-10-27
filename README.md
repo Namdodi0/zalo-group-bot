@@ -75,22 +75,38 @@ Mặc định log ở dạng **pretty**: giờ + icon + căn cột, có màu khi
 18:33:31 🤖 zalo bot ready             version=1.0.3 id=2214705736200876533 name="Bot deepseek" groups=true
 18:33:31 📡 polling started            mode=long-poll timeoutSec=30
 18:33:31 ⚡  nim warmup done            ms=394
-18:33:45 💬 incoming message           chatId=g1 from="Nam" kind=text len=12
+18:33:45 💬 Nam: @Bot giá vàng hôm nay?    chatId=g1 kind=text len=26
 18:33:46 🔍 web search                 query="giá vàng hôm nay" results=4
-18:33:47 ✅ replied                    ms=1840 llmMs=1712 tps=48.6 tokens=83 chars=612 messages=1 model=deepseek provider=deepseek
+18:33:47 🧠 thinking: Người dùng hỏi giá vàng, cần tra kết quả mới nhất...    chatId=g1 model=deepseek-v4-pro
+18:33:47 🤖 bot: Giá vàng hôm nay tăng lên ...    chatId=g1 part=1
+18:33:47 ✅ replied · deepseek-v4-pro · 48.6 tok/s    chatId=g1 model=deepseek-v4-pro alias=deepseek provider=deepseek tps=48.6 tokens=83 ms=1840 llmMs=1712 chars=612 messages=1 kept=3 reasoning=none
 ```
 
 Mỗi dòng log đều có `version=` (lấy từ `package.json`) — panel tự `git pull` nên nhìn log là biết đang chạy bản nào.
+
+Log console hiện đủ:
+
+| Dòng | Nội dung |
+|---|---|
+| `💬 <tên>: ...` | tin nhắn user gửi (kèm `chatId`, `kind`, `len`) |
+| `🧠 thinking: ...` | phần suy nghĩ của model (`reasoning_content`), tối đa 2000 ký tự; tắt bằng `LOG_THINKING=off` |
+| `🤖 bot: ...` | đúng nội dung bot gửi đi, từng phần nếu bị tách |
+| `✅ replied · <model> · <tps> tok/s` | tổng kết lượt: model thật, tốc độ, token, thời gian |
+
+Lưu ý: `thinking` chỉ có nội dung khi `AI_REASONING` khác `none` (`low|medium|high|auto`). Đặt `none` thì model không trả suy nghĩ, dòng `🧠` sẽ không xuất hiện.
 
 Dòng `replied` có thêm:
 
 | Field | Ý nghĩa |
 |---|---|
+| `model` / `alias` / `provider` | tên model thật (`deepseek-v4-pro`, `nvidia/...`), alias và provider đang dùng |
 | `ms` | tổng thời gian xử lý lượt (từ lúc nhận tin đến khi gửi xong) |
 | `llmMs` | thời gian gọi LLM (cộng dồn cả vòng tool call), không tính mạng Zalo |
 | `tps` | tốc độ sinh chữ: `completion tokens / thời gian sinh thật` (đã trừ TTFT) |
 | `tokens` | số token model sinh ra (`usage.completion_tokens`) |
+| `thinkingTokens` | token dùng cho phần suy nghĩ (nếu provider báo) |
 | `chars` | độ dài câu trả lời (ký tự) |
+| `reasoning` | chế độ suy luận (`none|low|medium|high`), không phải nội dung thinking |
 
 `LOG_LEVEL=debug` in thêm `llm response` cho từng lần gọi: `ms`, `ttft`, `tps`, `promptTokens`, `completionTokens`, `finish`, `toolCalls`. `/status` trong chat cũng hiện version + `~tok/s` gần nhất.
 

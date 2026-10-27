@@ -54,6 +54,9 @@ async function main() {
     ...(config.dryRun ? { dryRun: true } : {}),
     icon: '🚀',
   });
+  if (config.logThinking !== false && config.ai.reasoning === 'none') {
+    logger.info('AI_REASONING=none nên model không trả thinking — đặt low|medium|high|auto để thấy dòng 🧠');
+  }
 
   const httpClient = createHttp({ logger, metrics });
 

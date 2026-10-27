@@ -407,6 +407,7 @@ export function loadConfig(input = {}) {
     maxMessagesPerReply: /** @type {number} */ (readInt(env, 'MAX_MESSAGES_PER_REPLY', 0, { min: 0 })),
     maxQueueDepth: /** @type {number} */ (readInt(env, 'MAX_QUEUE_DEPTH', 50, { min: 1, max: 1000 })),
     logLevel: cli.verbose ? 'debug' : readStr(env, 'LOG_LEVEL', 'info').toLowerCase(),
+    logThinking: readBool(env, 'LOG_THINKING', true),
     logFormat: /** @type {'pretty'|'json'} */ (logFormat),
     logColor: /** @type {'auto'|'always'|'never'} */ (logColor),
     dataDir,

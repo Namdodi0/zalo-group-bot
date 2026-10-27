@@ -11,13 +11,14 @@ import { createMetrics } from '../src/metrics.js';
 import { makeConfig, silentLogger, textEvent } from '../test-utils/helpers.js';
 
 /**
- * @param {{replies?: any[], configOverrides?: Record<string, any>, tavily?: any, nimError?: any, delayMs?: number, deltaText?: string}} [options]
+ * @param {{replies?: any[], configOverrides?: Record<string, any>, tavily?: any, nimError?: any, delayMs?: number, deltaText?: string, logger?: any}} [options]
  */
 async function setup(options = {}) {
   const dir = await fsp.mkdtemp(path.join(os.tmpdir(), 'zalo-bot-test-'));
   const config = makeConfig({ context: { dir }, ...(options.configOverrides ?? {}) });
   const metrics = createMetrics();
-  const store = createContextStore({ dir, logger: silentLogger, debounceMs: 2 });
+  const logger = options.logger ?? silentLogger;
+  const store = createContextStore({ dir, logger, debounceMs: 2 });
   await store.init();
 
   /** @type {any[]} */
@@ -67,9 +68,12 @@ async function setup(options = {}) {
     index += 1;
     return {
       content: item.content ?? '',
+      reasoning: item.reasoning ?? '',
       toolCalls: item.toolCalls ?? [],
       usage: { prompt_tokens: 20, completion_tokens: 10 },
       latencyMs: 1,
+      completionTokens: 10,
+      completionMs: 1,
       aborted: false,
     };
   }
@@ -99,7 +103,7 @@ async function setup(options = {}) {
     zalo,
     validator: { validate: async () => ({ ok: true }) },
     stickers,
-    logger: silentLogger,
+    logger,
     metrics,
   });
   const commands = createCommands({
@@ -113,9 +117,9 @@ async function setup(options = {}) {
     },
     models: llm,
     stickers,
-    logger: silentLogger,
+    logger,
   });
-  const agent = createAgent({ config, logger: silentLogger, metrics, zalo, llm, store, tools, commands, stickers });
+  const agent = createAgent({ config, logger, metrics, zalo, llm, store, tools, commands, stickers });
 
   return { agent, sent, sentStickers, events, nimCalls, store, config, metrics, dir };
 }
@@ -342,6 +346,32 @@ test('lượt 2 gửi kèm tin nhắn user + assistant của lượt 1 lên API'
   );
   // Câu hỏi mới nhất vẫn nằm cuối payload.
   assert.match(String(payload.at(-1).content), /mình tên gì/);
+});
+
+test('log console hiện tin user, tin bot, tên model, tok/s và thinking', async () => {
+  /** @type {string[]} */
+  const lines = [];
+  const capture = {
+    debug: (msg, fields) => lines.push(`debug ${msg} ${JSON.stringify(fields ?? {})}`),
+    info: (msg, fields) => lines.push(`info ${msg} ${JSON.stringify(fields ?? {})}`),
+    warn: () => {},
+    error: () => {},
+  };
+  capture.child = () => capture;
+
+  const { agent } = await setup({
+    logger: capture,
+    replies: [{ content: 'Chào Nam, khỏe không?', reasoning: 'Người dùng tên Nam.' }],
+  });
+  await agent.handle(textEvent('mình tên Nam'));
+
+  const log = lines.join('\n');
+  assert.match(log, /💬 Nam: mình tên Nam/);
+  assert.match(log, /🧠 thinking: Người dùng tên Nam\./);
+  assert.match(log, /🤖 bot: Chào Nam, khỏe không\?/);
+  assert.match(log, /✅ replied · deepseek-flash · 10000 tok\/s/);
+  assert.match(log, /"model":"deepseek-flash"/);
+  assert.match(log, /"tps":10000/);
 });
 
 test('findBreak cắt ngay sau dấu câu, không lặp dấu', () => {

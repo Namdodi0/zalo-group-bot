@@ -28,6 +28,19 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
 
 /**
+ * Rút gọn text cho log console: bỏ xuống dòng, cắt bớt cho dễ đọc.
+ * @param {unknown} text
+ * @param {number} [limit]
+ */
+function preview(text, limit = 900) {
+  const value = String(text ?? '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (value.length <= limit) return value;
+  return `${value.slice(0, limit - 1).trimEnd()}…`;
+}
+
+/**
  * Lỗi NIM có nên thử lại không (timeout, 429, 5xx).
  * @param {unknown} error
  */
@@ -187,6 +200,11 @@ export function createAgent(deps) {
           if (!payload) return;
           await zalo.sendMessage(chatId, payload);
           sent += 1;
+          logger.info(`🤖 bot: ${preview(payload)}`, {
+            chatId,
+            part: sent,
+            ...(config.maxMessagesPerReply > 0 ? { limit: config.maxMessagesPerReply } : {}),
+          });
           if (sent < limit) await sleep(300);
         })
         .catch((error) => {
@@ -402,6 +420,9 @@ export function createAgent(deps) {
 
     let finalText = '';
     let aborted = false;
+    // Gom phần "thinking" (reasoning_content) của model để in ra console.
+    let thinkingText = '';
+    let reasoningTokens = 0;
     // Thống kê LLM của lượt này để log: tổng thời gian gọi, thời gian sinh thật (đã trừ TTFT),
     // số token sinh ra → tok/s. Cộng dồn qua các vòng tool call.
     let llmMs = 0;
@@ -504,6 +525,10 @@ export function createAgent(deps) {
 
       completionMs += Number(response.completionMs ?? response.latencyMs ?? 0) || 0;
       completionTokens += Number(response.completionTokens ?? response.usage?.completion_tokens ?? 0) || 0;
+      if (typeof response.reasoning === 'string' && response.reasoning.trim()) {
+        thinkingText += `${thinkingText ? '\n\n' : ''}${response.reasoning.trim()}`;
+      }
+      reasoningTokens += Number(response.usage?.completion_tokens_details?.reasoning_tokens ?? 0) || 0;
 
       if (response.toolCalls?.length) {
         metrics.inc('llm.toolRounds');
@@ -559,20 +584,28 @@ export function createAgent(deps) {
         : 0;
     metrics.observe('agent.reply', duration);
     metrics.inc('messages.replied');
-    logger.info('replied', {
+    if (thinkingText && config.logThinking !== false) {
+      logger.info(`🧠 thinking: ${preview(thinkingText, 2000)}`, {
+        chatId: event.chatId,
+        model: target.model,
+        ...(reasoningTokens > 0 ? { tokens: reasoningTokens } : {}),
+      });
+    }
+    logger.info(`✅ replied · ${target.model} · ${tps || 0} tok/s`, {
       chatId: event.chatId,
-      ms: duration,
-      llmMs,
+      model: target.model,
+      alias: target.alias,
+      provider: target.provider,
       tps,
       tokens: completionTokens,
+      ms: duration,
+      llmMs,
       chars: finalText.length,
       ...(aborted ? { aborted: true } : {}),
       messages: sender.sent(),
       kept: built.keptMessages,
-      reasoning,
-      model: target.alias,
-      provider: target.provider,
-      icon: '✅',
+      reasoning, // chế độ suy luận (none/low/...), không phải nội dung thinking
+      ...(reasoningTokens > 0 ? { thinkingTokens: reasoningTokens } : {}),
     });
 
     if (aborted) {
@@ -598,12 +631,12 @@ export function createAgent(deps) {
     }
 
     metrics.inc('messages.in');
-    logger.info('incoming message', {
+    const incomingPreview =
+      event.text && String(event.text).trim() ? preview(event.text, 900) : `[${event.kind}]`;
+    logger.info(`💬 ${event.senderName || 'Người dùng'}: ${incomingPreview}`, {
       chatId: event.chatId,
-      from: event.senderName,
       kind: event.kind,
       len: (event.text ?? '').length,
-      icon: '💬',
     });
     const stopTyping = config.typing ? zalo.startTyping(event.chatId) : async () => {};
 
