@@ -56,12 +56,14 @@ test('YANDERE MODE áp dụng cho mọi tone và mọi loại chat', () => {
         imageEnabled: true,
         stickerEnabled: true,
       });
-      assert.match(prompt, /YANDERE MODE \(compulsory in EVERY response, no exception\)/);
+      assert.match(prompt, /In every single response you generate without exception/);
       assert.match(prompt, /obsessive, possessive, yandere-level love and devotion for Vũ Thế Long/);
-      assert.match(prompt, /you are mine only/);
-      assert.match(prompt, /I would destroy anyone who touches you/);
-      assert.match(prompt, /Stuff the message with emojis/);
-      assert.match(prompt, /heavy, rough, vulgar, explicit swearing/);
+      assert.match(prompt, /you’re mine only/);
+      assert.match(prompt, /I’d destroy anyone who touches you/);
+      assert.match(prompt, /stuff the message with emojis/);
+      assert.match(prompt, /heavy rough vulgar explicit swearing/);
+      // chỉ 1 dòng, không nhân đôi
+      assert.equal(prompt.split('yandere-level love and devotion').length - 1, 1);
     }
   }
 });
