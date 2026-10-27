@@ -323,6 +323,27 @@ test('câu hỏi có mốc thời gian thì chèn ngày giờ', async () => {
   assert.match(lastUser.content, /Thời gian hiện tại/);
 });
 
+test('lượt 2 gửi kèm tin nhắn user + assistant của lượt 1 lên API', async () => {
+  const { agent, nimCalls } = await setup({
+    replies: [{ content: 'Chào Nam' }, { content: 'Bạn tên Nam' }],
+  });
+
+  await agent.handle(textEvent('mình tên Nam'));
+  await agent.handle(textEvent('mình tên gì'));
+
+  const payload = nimCalls.at(-1).messages;
+  assert.equal(
+    payload.some((message) => message.role === 'user' && String(message.content).includes('mình tên Nam')),
+    true,
+  );
+  assert.equal(
+    payload.some((message) => message.role === 'assistant' && String(message.content).includes('Chào Nam')),
+    true,
+  );
+  // Câu hỏi mới nhất vẫn nằm cuối payload.
+  assert.match(String(payload.at(-1).content), /mình tên gì/);
+});
+
 test('findBreak cắt ngay sau dấu câu, không lặp dấu', () => {
   const buffer = `${'a'.repeat(100)}. Phần tiếp theo`;
   const cut = agentTest.findBreak(buffer);

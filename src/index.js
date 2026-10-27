@@ -5,7 +5,7 @@ import { createModelRouter } from './ai/router.js';
 import { createStickerStore } from './ai/stickers.js';
 import { createToolRuntime } from './ai/tools.js';
 import { createCommands } from './commands/index.js';
-import { collectSecrets, ConfigError, describeConfig, HELP_TEXT, loadConfig } from './config.js';
+import { collectSecrets, ConfigError, describeConfig, HELP_TEXT, isEphemeralDataDir, loadConfig } from './config.js';
 import { createContextStore } from './context/store.js';
 import { describeEnvHints, loadEnvFiles } from './env.js';
 import { createHttp } from './http.js';
@@ -63,6 +63,18 @@ async function main() {
     ttlHours: config.context.ttlHours,
   });
   await store.init();
+  const contextFiles = await store.count();
+  logger.info('context store', {
+    dir: config.context.dir,
+    files: contextFiles,
+    ttl: config.context.ttlHours > 0 ? `${config.context.ttlHours}h` : 'never',
+    icon: '📚',
+  });
+  if (isEphemeralDataDir(config.dataDir)) {
+    logger.warn('DATA_DIR nằm trong thư mục tạm — context sẽ mất khi restart/redeploy', {
+      dir: config.dataDir,
+    });
+  }
 
   const zalo = createZaloClient({
     token: config.zalo.token,
@@ -139,7 +151,7 @@ async function main() {
           `⚙️  ${config.mode} · reasoning=${config.ai.reasoning} · max_tokens=${config.ai.maxTokens ?? 'không giới hạn'}`,
           `🔎 search=${config.search.enabled ? `${config.search.depth}/${config.search.maxResults}${config.search.auto ? '' : ' (auto off)'}` : 'off'} · emoji=${config.emoji ? 'on' : 'off'} · typing=${config.typing ? 'on' : 'off'} · progressive=${config.progressive} · sticker=${config.sticker.enabled ? 'on' : 'off'}`,
           `📚 context ${config.context.maxTokens > 0 || config.context.maxMessages > 0 ? `${config.context.maxTokens > 0 ? config.context.maxTokens : '∞'} tokens / ${config.context.maxMessages > 0 ? config.context.maxMessages : '∞'} tin` : 'không giới hạn'} · trả lời ${config.maxMessagesPerReply > 0 ? `≤ ${config.maxMessagesPerReply} tin` : 'không giới hạn tin'}`,
-        ],
+          `💾 data ${config.dataDir} · ${contextFiles} file context · TTL ${config.context.ttlHours > 0 ? `${config.context.ttlHours}h` : 'không xoá'}`,        ],
         { color: config.logColor },
       );
     }

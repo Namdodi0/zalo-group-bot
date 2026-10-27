@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
 import crypto from 'node:crypto';
 import { DEFAULT_ALIAS, FALLBACK_ALIAS, MODEL_ALIASES, isKnownAlias } from './ai/models.js';
@@ -12,6 +13,28 @@ import { VERSION } from './version.js';
 
 const BOOL_TRUE = new Set(['1', 'on', 'true', 'yes', 'y']);
 const BOOL_FALSE = new Set(['0', 'off', 'false', 'no', 'n', '']);
+
+// Thư mục gốc của repo, tính từ file này (src/..) — KHÔNG phụ thuộc cwd.
+// Panel/pm2/systemd có thể khởi động bot với cwd khác, làm DATA_DIR tương đối
+// trỏ sang một thư mục mới tinh và context "biến mất" sau mỗi lần restart.
+const PROJECT_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+
+/**
+ * DATA_DIR nằm trong thư mục tạm thì chắc chắn mất khi restart/redeploy.
+ * @param {string} dir
+ */
+export function isEphemeralDataDir(dir) {
+  const normalized = String(dir).replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase();
+  return (
+    normalized === '/tmp' ||
+    normalized.startsWith('/tmp/') ||
+    normalized === '/var/tmp' ||
+    normalized.startsWith('/var/tmp/') ||
+    normalized.endsWith('/temp') ||
+    normalized.includes('/temp/') ||
+    normalized.includes('/appdata/local/temp')
+  );
+}
 
 export class ConfigError extends Error {
   /** @param {string} message */
@@ -262,7 +285,11 @@ export function loadConfig(input = {}) {
   }
 
   let webhookSecret = '';
-  const dataDir = path.resolve(cwd, readStr(env, 'DATA_DIR', './data'));
+  // Tương đối → resolve theo gốc repo, để cwd của panel/pm2 không đổi chỗ lưu context.
+  const dataDirRaw = readStr(env, 'DATA_DIR', './data').trim() || './data';
+  const dataDir = path.isAbsolute(dataDirRaw)
+    ? path.normalize(dataDirRaw)
+    : path.resolve(PROJECT_ROOT, dataDirRaw);
   webhookSecret = resolveWebhookSecret(env, dataDir, mode);
 
   const depthRaw = readStr(env, 'SEARCH_DEPTH', 'fast');
@@ -325,7 +352,8 @@ export function loadConfig(input = {}) {
       maxMessages: /** @type {number} */ (readInt(env, 'CONTEXT_MAX_MESSAGES', 0, { min: 0 })),
       maxCharsPerMessage: /** @type {number} */ (readInt(env, 'CONTEXT_MAX_CHARS_PER_MESSAGE', 12000, { min: 0 })),
       maxImages: /** @type {number} */ (readInt(env, 'CONTEXT_MAX_IMAGES', 2, { min: 1, max: 20 })),
-      ttlHours: /** @type {number} */ (readInt(env, 'CONTEXT_TTL_HOURS', 72, { min: 1 })),
+      ttlHours: /** @type {number} */ (readInt(env, 'CONTEXT_TTL_HOURS', 72, { min: 0 })),
+      // ttlHours = 0 → không bao giờ tự xoá context
       summary: readBool(env, 'CONTEXT_SUMMARY', true),
     },
     search: {
@@ -408,6 +436,9 @@ export function describeConfig(config) {
     emoji: config.emoji,
     typing: config.typing,
     progressive: config.progressive,
+    dataDir: config.dataDir,
+    contextDir: config.context.dir,
+    contextTtl: config.context.ttlHours > 0 ? `${config.context.ttlHours}h` : 'never',
     context:
       config.context.maxTokens > 0 || config.context.maxMessages > 0
         ? `${config.context.maxTokens > 0 ? `${config.context.maxTokens} tok` : '∞ tok'} / ${config.context.maxMessages > 0 ? `${config.context.maxMessages} msg` : '∞ msg'}`

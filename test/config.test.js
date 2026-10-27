@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import fsp from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { loadConfig } from '../src/config.js';
 
 function baseEnv(extra = {}) {
@@ -72,6 +73,25 @@ test('mặc định không giới hạn context / số tin trả lời', async (
   assert.equal(config.context.maxImages, 2);
   assert.equal(config.search.cacheTtlMs, 600_000);
   assert.equal(config.maxQueueDepth, 50);
+});
+
+test('DATA_DIR tương đối resolve theo gốc repo, không theo cwd', async () => {
+  const dir = await tempDir();
+  const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+  const config = loadConfig({ argv: [], env: baseEnv({ DATA_DIR: './data' }), cwd: dir });
+  assert.equal(config.dataDir, path.join(repoRoot, 'data'));
+  assert.equal(config.context.dir, path.join(repoRoot, 'data', 'contexts'));
+
+  // Đường dẫn tuyệt đối vẫn được giữ nguyên.
+  const absolute = await tempDir();
+  const config2 = loadConfig({ argv: [], env: baseEnv({ DATA_DIR: absolute }), cwd: dir });
+  assert.equal(config2.dataDir, path.normalize(absolute));
+});
+
+test('CONTEXT_TTL_HOURS=0 được chấp nhận (không bao giờ xoá)', async () => {
+  const dir = await tempDir();
+  const config = loadConfig({ argv: [], env: baseEnv({ CONTEXT_TTL_HOURS: '0' }), cwd: dir });
+  assert.equal(config.context.ttlHours, 0);
 });
 
 test('mặc định dùng DeepSeek flash 4.1 với reasoning off', async () => {

@@ -66,8 +66,7 @@ test('store giữ chat đang hoạt động khi prune', async () => {
   assert.equal(loaded.messages.length, 1);
 });
 
-test('store reset keepMeta giữ meta, xoá messages/summary', async () => {
-  const dir = await fsp.mkdtemp(path.join(os.tmpdir(), 'zalo-store-'));
+test('store reset keepMeta giữ meta, xoá messages/summary', async () => {  const dir = await fsp.mkdtemp(path.join(os.tmpdir(), 'zalo-store-'));
   const store = createContextStore({ dir, logger: silentLogger, ttlHours: 72, debounceMs: 2 });
   await store.init();
 
@@ -99,4 +98,27 @@ test('store reset mặc định (không keepMeta) xoá sạch file', async () =>
 
   await store.reset('chat-3');
   await assert.rejects(() => fsp.stat(store.fileFor('chat-3')));
+});
+
+test('CONTEXT_TTL_HOURS=0: prune không xoá context nào', async () => {
+  const dir = await fsp.mkdtemp(path.join(os.tmpdir(), 'zalo-store-'));
+  const store = createContextStore({ dir, logger: silentLogger, ttlHours: 0, debounceMs: 2 });
+  await store.init();
+
+  const record = await store.get('keep-forever');
+  record.messages.push({ role: 'user', text: 'tin cũ', ts: 1 });
+  store.touch('keep-forever');
+  await store.flush();
+
+  // Giả lập file đã 1 năm tuổi: TTL > 0 sẽ bị xoá, TTL = 0 thì phải giữ.
+  const old = new Date(Date.now() - 365 * 24 * 3_600_000);
+  await fsp.utimes(store.fileFor('keep-forever'), old, old);
+
+  assert.equal(await store.prune(), 0);
+  assert.equal(await store.count(), 1);
+
+  const fresh = createContextStore({ dir, logger: silentLogger, ttlHours: 0 });
+  await fresh.init();
+  const loaded = await fresh.get('keep-forever');
+  assert.equal(loaded.messages.length, 1);
 });

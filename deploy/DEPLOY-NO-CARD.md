@@ -140,7 +140,9 @@ Lưu ý khi tạo `.env` bằng File Manager của panel:
 
 - Lưu dạng **UTF-8, không BOM** (Notepad: *Save as → Encoding: UTF-8*; nếu có BOM bot vẫn đọc được, nhưng đừng dùng UTF-16).
 - Không cần dấu nháy quanh giá trị; comment bằng `#` ở đầu dòng.
-- Trên Wispbyte, nhớ `DATA_DIR=/tmp/zalo-data` nếu `/home/container` không ghi được (lỗi `EACCES`).
+- Trên Wispbyte, đặt `DATA_DIR` tới volume persistent (thường `/home/container/data`), **không dùng `/tmp`** — `/tmp` mất mỗi lần restart. Đường dẫn tương đối (`./data`) giờ được tính từ gốc repo, nhưng đường dẫn tuyệt đối vẫn an toàn hơn.
+- Trước khi **Reinstall/Redeploy**: tải `data/contexts/*.json` về máy. Reinstall xoá sạch `data/`; `git pull` + restart thì không.
+- `CONTEXT_TTL_HOURS=0` = giữ context mãi; mặc định 72 giờ, khuyến nghị 720 giờ (30 ngày).
 
 ### B4. Kiểm tra
 
@@ -154,7 +156,8 @@ Lưu ý khi tạo `.env` bằng File Manager của panel:
 | Rủi ro | Cách giảm |
 |---|---|
 | Tự stop / 504 / maintenance | Uptime monitor + bật auto-restart trong panel |
-| `data/` mất khi redeploy | Tải `data/contexts/*.json` về máy định kỳ (panel có file manager) |
+| `data/` mất khi **Reinstall/Redeploy** | Đặt `DATA_DIR` tuyệt đối ngoài thư mục code; tải `data/contexts/*.json` về máy trước khi reinstall |
+| Bot "mất trí nhớ" sau restart | Xem log `context store { dir, files, ttl }` lúc khởi động và `/status`; `files=0` → sai `DATA_DIR` hoặc TTL quá ngắn |
 | 512 MB RAM | Đã đủ cho bot (bỏ Grok proxy rồi, ~100–150 MB) |
 | Token trên hạ tầng họ | Dùng key riêng cho bot, thu hồi được khi cần |
 

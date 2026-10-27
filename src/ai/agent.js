@@ -363,6 +363,21 @@ export function createAgent(deps) {
       messages.push({ role: 'system', content: buildSearchContext(options.forceSearch, search.text) });
     }
 
+    // Bằng chứng context có được gửi lên API: bật LOG_LEVEL=debug sẽ thấy số message
+    // (đã gồm lịch sử) và số ký tự của cả payload ở mỗi lượt.
+    logger.debug('llm payload', {
+      chatId: event.chatId,
+      messages: messages.length,
+      kept: built.keptMessages,
+      dropped: built.dropped,
+      estTokens: built.estimatedTokens,
+      chars: messages.reduce(
+        (sum, message) =>
+          sum + (typeof message.content === 'string' ? message.content.length : JSON.stringify(message.content).length),
+        0,
+      ),
+    });
+
     let streamBuffer = '';
     let emitted = 0;
     let flushed = false;

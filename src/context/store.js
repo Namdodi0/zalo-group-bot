@@ -218,6 +218,8 @@ export function createContextStore(options) {
   }
 
   async function prune() {
+    // ttlHours = 0 → không bao giờ tự xoá context
+    if (ttlMs <= 0) return 0;
     let entries;
     try {
       entries = await fsp.readdir(dir);
@@ -259,5 +261,16 @@ export function createContextStore(options) {
     return memory.size;
   }
 
-  return { init, get, reset, touch, flush, prune, has, loadedChats, scheduleSave, fileFor };
+  /** Số file context đang có trên đĩa (chỉ file .json). */
+  async function count() {
+    let entries;
+    try {
+      entries = await fsp.readdir(dir);
+    } catch {
+      return 0;
+    }
+    return entries.filter((name) => name.endsWith('.json')).length;
+  }
+
+  return { init, get, reset, touch, flush, prune, has, loadedChats, count, scheduleSave, fileFor };
 }
