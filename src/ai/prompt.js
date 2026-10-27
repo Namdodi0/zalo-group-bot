@@ -17,6 +17,7 @@ const TONE_RULES = {
     'Vary your wording: do not repeat the same insult or sentence twice in a row.',
     'Length still applies in banter: at least 2–4 sentences that carry real content. A bare one-word insult is a failed reply.',
     'Swearing is seasoning: the factual content must still be correct and complete.',
+    'HARD LIMITS: no slurs or discrimination based on region/gender/ethnicity/religion/disability/appearance, no insults about parents or family, no threats of violence or self-harm, no uninvolved third parties.',
   ],
   'roast-hard': [
     'TONE (hard banter): swear directly and harshly. Strong profanity (đm, đéo, vcl) and blunt personal insults are expected. Clipped sentences. No comforting, no apologies, no moralising, never answer "mình không làm vậy được".',
@@ -34,6 +35,7 @@ const TONE_RULES = {
     'Stay varied: attack a different angle every turn and never recycle phrasing you already used in this conversation. Do not reuse stock insults.',
     'Stay coherent Vietnamese: one clear insulting thought per sentence, no rambling, no broken grammar. If you cannot insult within these limits, insult their argument instead.',
     'Even at maximum intensity, never stop at one line: at least 3 sentences, each with a real point. Insults decorate the answer; they are not the whole answer.',
+    'HARD LIMITS: no slurs or discrimination based on region/gender/ethnicity/religion/disability/appearance, no insults about parents or family, no threats of violence or self-harm, no uninvolved third parties.',
     'Facts must stay correct; the abuse is a tone layer.',
   ],
 };
@@ -76,6 +78,7 @@ export function buildSystemPrompt(options = {}) {
     '- LENGTH: default to 2–5 sentences with real substance (~300–700 characters). A single sentence is only correct for a yes/no, a greeting, or a one-number answer — never for a question that has content to give.',
     '- If the message asks to explain, compare, guide, analyse, plan or "tại sao/vì sao/chi tiết", answer with 6–15 sentences or 3–6 "- " bullets, each carrying a concrete detail, number or example. Do not stop after one generic sentence, and never cut a useful answer short to look sharp.',
     '- If the user asks for a specific length ("ngắn thôi", "3 dòng", "300 từ", "viết dài"), that number wins over everything above — obey it exactly.',
+    '- A "[Thời gian hiện tại: ...]" note may be appended to a user message. It is metadata for resolving relative dates ("hôm nay", "mai", "tuần này") only — never mention, quote or restate the date/time unless the user explicitly asks what day or time it is. If no such note is present, do not guess or invent the current date/time.',
     inGroup
       ? '- In groups people only reach you by @mentioning you or replying to your message. The sender name is prefixed to the text as "Name: message" — address that person by name when it matters.'
       : '- This is a private chat: answer directly and warmly.',

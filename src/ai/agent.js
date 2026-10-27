@@ -38,18 +38,38 @@ function isRetryableNimError(error) {
 }
 
 /**
+ * Tin nhắn có nhắc mốc thời gian tương đối mới cần biết "hôm nay là ngày nào".
+ * Câu hỏi thường không chèn giờ để model không nhắc lại ngày giờ vô cớ.
+ */
+const TIME_HINT_RE =
+  /(?:^|[\s,.;:!?()"'“”])(?:hôm nay|hôm qua|hôm kia|hôm trước|hôm bữa|hôm nào|ngày mai|ngày mốt|sáng mai|chiều mai|tối mai|sáng nay|trưa nay|chiều nay|tối nay|đêm nay|tuần này|tuần sau|tuần trước|tuần tới|tuần rồi|tháng này|tháng sau|tháng trước|tháng tới|tháng rồi|năm nay|năm sau|năm trước|năm rồi|cuối tuần|đầu tuần|cuối tháng|đầu tháng|bây giờ|hiện tại|lúc này|mấy giờ|giờ nào|giờ rồi|thứ mấy|ngày mấy|tháng mấy|bao giờ|khi nào|bao lâu|deadline|hạn chót|hạn nộp|mai|mốt|noel|giáng sinh|tết|sinh nhật)(?=$|[\s,.;:!?()"'“”])/i;
+
+/** @param {string} text */
+function needsTimeContext(text) {
+  return TIME_HINT_RE.test(String(text ?? ''));
+}
+
+/**
  * Chèn mốc thời gian vào cuối tin nhắn user (bản copy gửi model, không lưu vào context).
  * Giữ system prompt tĩnh để prefix không đổi giữa các lượt.
  * @param {any[]} messages
  * @param {Date} [date]
  * @param {string[]} [notes] ghi chú thêm cho lượt này (vd nhắc độ dài)
+ * @param {{includeTime?: boolean}} [options] `includeTime: false` → chỉ chèn notes
  */
-function injectTimeContext(messages, date = new Date(), notes = []) {
-  const lines = [`[Thời gian hiện tại: ${formatNow(date)}]`];
+function injectTimeContext(messages, date = new Date(), notes = [], options = {}) {
+  /** @type {string[]} */
+  const lines = [];
+  if (options.includeTime !== false) {
+    lines.push(
+      `[Thời gian hiện tại: ${formatNow(date)} — chỉ dùng để quy đổi mốc thời gian tương đối, không nhắc lại ngày giờ trừ khi người dùng hỏi]`,
+    );
+  }
   for (const note of notes) {
     const clean = String(note ?? '').trim();
     if (clean) lines.push(`[${clean}]`);
   }
+  if (!lines.length) return messages;
   const stamp = `\n\n${lines.join('\n')}`;
   for (let index = messages.length - 1; index >= 0; index -= 1) {
     const message = messages[index];
@@ -330,7 +350,9 @@ export function createAgent(deps) {
     const messages = [...built.messages];
     // Nhắc độ dài trong chính lượt này: system prompt một mình không đủ, model rất
     // hay trả lời 1 câu dù prompt đã dặn "đủ ý".
-    injectTimeContext(messages, new Date(), [buildLengthHint(effectiveText, { tone })]);
+    injectTimeContext(messages, new Date(), [buildLengthHint(effectiveText, { tone })], {
+      includeTime: needsTimeContext(effectiveText),
+    });
 
     if (options.forceSearch) {
       const search = await tools.run(
@@ -734,4 +756,4 @@ export function createAgent(deps) {
   return { handle, enqueue, pending, seenSize: () => seen.size };
 }
 
-export const __test__ = { findBreak, clamp, injectTimeContext };
+export const __test__ = { findBreak, clamp, injectTimeContext, needsTimeContext };

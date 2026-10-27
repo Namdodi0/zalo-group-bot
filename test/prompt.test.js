@@ -43,10 +43,17 @@ test('mọi tone đều có sàn độ dài: không trả lời 1 câu', () => {
   assert.match(groupPrompt({ tone: 'roast-extreme' }), /at least 3 sentences/);
 });
 
-test('system prompt tĩnh: không chứa giờ/ngày', () => {
+test('system prompt tĩnh: không chèn ngày giờ cụ thể', () => {
   const prompt = groupPrompt();
-  assert.equal(prompt.includes('Thời gian hiện tại'), false);
+  assert.equal(/\d{1,2}[:/]\d{1,2}[:/]\d{2,4}/.test(prompt), false);
   assert.equal(prompt, groupPrompt());
+});
+
+test('dặn model không nhắc lại ngày giờ trong câu trả lời', () => {
+  const prompt = groupPrompt();
+  assert.match(prompt, /metadata for resolving relative dates/);
+  assert.match(prompt, /never mention, quote or restate the date\/time/i);
+  assert.match(prompt, /do not guess or invent the current date\/time/);
 });
 
 test('prompt thay đổi theo chat type và công cụ bật/tắt', () => {

@@ -287,7 +287,40 @@ test('injectTimeContext thêm giờ vào tin user cuối', () => {
   ];
   agentTest.injectTimeContext(messages, new Date(2026, 9, 26, 18, 0, 0));
   assert.match(messages[1].content, /Thời gian hiện tại/);
+  assert.match(messages[1].content, /không nhắc lại ngày giờ/);
   assert.equal(messages[0].content, 'static');
+});
+
+test('injectTimeContext: tắt giờ thì chỉ chèn ghi chú', () => {
+  const messages = [{ role: 'user', content: 'hi' }];
+  agentTest.injectTimeContext(messages, new Date(2026, 9, 26, 18, 0, 0), ['Độ dài: 2 câu'], {
+    includeTime: false,
+  });
+  assert.equal(messages[0].content.includes('Thời gian hiện tại'), false);
+  assert.match(messages[0].content, /Độ dài: 2 câu/);
+});
+
+test('needsTimeContext: chỉ tin nhắn nhắc mốc thời gian mới cần giờ', () => {
+  assert.equal(agentTest.needsTimeContext('hôm nay thế nào'), true);
+  assert.equal(agentTest.needsTimeContext('mấy giờ rồi'), true);
+  assert.equal(agentTest.needsTimeContext('mai đi học không'), true);
+  assert.equal(agentTest.needsTimeContext('giải thích TCP'), false);
+  assert.equal(agentTest.needsTimeContext('bot ơi'), false);
+});
+
+test('câu hỏi thường không chèn ngày giờ vào prompt gửi model', async () => {
+  const { agent, nimCalls } = await setup();
+  await agent.handle(textEvent('giải thích TCP'));
+  const lastUser = [...nimCalls.at(-1).messages].reverse().find((message) => message.role === 'user');
+  assert.equal(lastUser.content.includes('Thời gian hiện tại'), false);
+  assert.match(lastUser.content, /Độ dài/);
+});
+
+test('câu hỏi có mốc thời gian thì chèn ngày giờ', async () => {
+  const { agent, nimCalls } = await setup();
+  await agent.handle(textEvent('hôm nay thế nào'));
+  const lastUser = [...nimCalls.at(-1).messages].reverse().find((message) => message.role === 'user');
+  assert.match(lastUser.content, /Thời gian hiện tại/);
 });
 
 test('findBreak cắt ngay sau dấu câu, không lặp dấu', () => {
