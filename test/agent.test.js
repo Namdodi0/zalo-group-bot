@@ -431,6 +431,18 @@ test('planAttemptBudget: a streaming retry also leaves the fallback reserve', ()
   assert.ok(20_000 - plan.timeoutMs >= 2500);
 });
 
+test('planAttemptBudget: unlimited AI timeout removes the cap and the TTFT guard', () => {
+  const plan = agentTest.planAttemptBudget({
+    remainingMs: Number.POSITIVE_INFINITY,
+    attempt: 1,
+    maxAttempts: 2,
+    streaming: false,
+    aiTimeoutMs: 0,
+  });
+  assert.equal(plan.timeoutMs, Number.POSITIVE_INFINITY);
+  assert.equal(plan.ttftMs, 0);
+});
+
 test('planAttemptBudget: a tight deadline gives a short attempt with no room for fallback', () => {
   const plan = agentTest.planAttemptBudget({
     remainingMs: 3000,

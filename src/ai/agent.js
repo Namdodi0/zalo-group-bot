@@ -29,16 +29,18 @@ const MIN_ATTEMPT_MS = 1500;
 
 /**
  * Split the budget of one attempt, always keeping part of the deadline for the fallback.
- * Streaming used to keep none, which let one hung stream eat the whole budget and leave
- * the user with an apology instead of an answer from the fallback model.
+ * `aiTimeoutMs <= 0` means the provider request has no timeout: no cap and no TTFT guard.
  * @param {{remainingMs: number, attempt: number, maxAttempts: number, streaming: boolean, aiTimeoutMs: number}} input
  */
 function planAttemptBudget(input) {
   const remaining = Math.max(0, input.remainingMs);
+  const aiCap = input.aiTimeoutMs > 0 ? input.aiTimeoutMs : Number.POSITIVE_INFINITY;
   const reserveMs = Math.min(FALLBACK_RESERVE_MAX_MS, Math.floor(remaining * FALLBACK_RESERVE_RATIO));
   const primaryMs = Math.max(0, remaining - reserveMs);
   const attemptsLeft = Math.max(1, input.maxAttempts - input.attempt + 1);
-  const ttftMs = Math.max(4000, Math.min(input.aiTimeoutMs, Math.floor(remaining / 2), 9000));
+  const ttftMs = Number.isFinite(aiCap)
+    ? Math.max(4000, Math.min(aiCap, Math.floor(remaining / 2), 9000))
+    : 0;
 
   if (input.streaming) {
     const timeoutMs = Math.min(remaining, Math.max(MIN_ATTEMPT_MS, primaryMs));
@@ -46,7 +48,7 @@ function planAttemptBudget(input) {
   }
 
   const share = Math.max(MIN_ATTEMPT_MS, Math.floor(primaryMs / attemptsLeft));
-  const timeoutMs = Math.max(1000, Math.min(input.aiTimeoutMs, share, primaryMs));
+  const timeoutMs = Math.max(1000, Math.min(aiCap, share, primaryMs));
   return { reserveMs, primaryMs, timeoutMs, ttftMs };
 }
 
@@ -257,7 +259,9 @@ export function createAgent(deps) {
    */
   async function conversation(event, record, options = {}, stopTyping = async () => {}) {
     const startedAt = Date.now();
-    const deadline = startedAt + config.responseTimeoutMs;
+    // RESPONSE_TIMEOUT_MS=0 means no deadline: wait for the model as long as it takes.
+    const deadline =
+      config.responseTimeoutMs > 0 ? startedAt + config.responseTimeoutMs : Number.POSITIVE_INFINITY;
     const sender = makeSender(event.chatId, stopTyping);
 
     const rawText = normalizeWhitespace(event.text ?? '');
@@ -459,7 +463,10 @@ export function createAgent(deps) {
             onDelta,
             ttftMs: budget.ttftMs,
             timeoutMs: budget.timeoutMs,
-            signal: AbortSignal.timeout(Math.max(1, budget.timeoutMs)),
+            signal:
+              Number.isFinite(budget.timeoutMs) && budget.timeoutMs > 0
+                ? AbortSignal.timeout(Math.max(1, budget.timeoutMs))
+                : undefined,
           });
         } finally {
           llmMs += Date.now() - callStarted;
@@ -535,10 +542,9 @@ export function createAgent(deps) {
               temperature: config.ai.temperature,
               maxTokens: config.ai.maxTokens,
               stream: false,
-              // Last chance: use all the time left instead of capping at the provider timeout,
-              // otherwise a slow model cannot answer even when seconds are still available.
-              timeoutMs: Math.max(1500, left - 300),
-              signal: AbortSignal.timeout(left),
+              // Last chance: use all the time left (no cap when there is no deadline).
+              timeoutMs: Number.isFinite(left) ? Math.max(1500, left - 300) : 0,
+              signal: Number.isFinite(left) ? AbortSignal.timeout(left) : undefined,
             });
             llmMs += Date.now() - fallbackStarted;
             metrics.inc('llm.fallback');
@@ -786,7 +792,13 @@ export function createAgent(deps) {
           const imageResult = await tools.run(
             'send_image',
             { query: result.query },
-            { chatId: event.chatId, deadline: Date.now() + config.responseTimeoutMs },
+            {
+              chatId: event.chatId,
+              deadline:
+                config.responseTimeoutMs > 0
+                  ? Date.now() + config.responseTimeoutMs
+                  : Number.POSITIVE_INFINITY,
+            },
           );
           if (!imageResult.ok) {
             const sender = makeSender(event.chatId, stopTyping);

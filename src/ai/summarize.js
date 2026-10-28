@@ -13,9 +13,11 @@ export function createSummarizer(options) {
    * @param {number} [deadline]
    * @param {any} [record]
    */
-  return async function summarize(messages, deadline = Date.now() + 15_000, record = null) {
+  return async function summarize(messages, deadline = Number.POSITIVE_INFINITY, record = null) {
     if (!messages?.length) return '';
-    const timeout = Math.min(15_000, Math.max(3000, deadline - Date.now()));
+    const left = deadline - Date.now();
+    // 0 = no deadline: wait for the summary like any other model call.
+    const timeout = Number.isFinite(left) ? Math.min(15_000, Math.max(3000, left)) : 0;
     const response = await llm.chat({
       ...(record ? { record } : {}),
       messages: [
@@ -26,7 +28,7 @@ export function createSummarizer(options) {
       temperature: 0.3,
       maxTokens: 200,
       timeoutMs: timeout,
-      signal: AbortSignal.timeout(timeout),
+      ...(timeout > 0 ? { signal: AbortSignal.timeout(timeout) } : {}),
     });
     return truncate(String(response.content ?? '').trim(), 900);
   };

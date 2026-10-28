@@ -322,7 +322,8 @@ export function loadConfig(input = {}) {
       ultraModel: readStr(env, 'NIM_ULTRA_MODEL', 'nvidia/nemotron-3-ultra-550b-a55b'),
       fallbackModel: readStr(env, 'NIM_FALLBACK_MODEL', 'nvidia/nemotron-3.5-lightning-30b-a3b'),
       temperature: Number(readStr(env, 'NIM_TEMPERATURE', '0.6')) || 0.6,
-      timeoutMs: /** @type {number} */ (readInt(env, 'NIM_TIMEOUT_MS', 15000, { min: 1000 })),
+      // 0 = no request timeout (wait for the provider as long as it needs).
+      timeoutMs: /** @type {number} */ (readInt(env, 'NIM_TIMEOUT_MS', 0, { min: 0 })),
     },
     deepseek: {
       apiKey: deepseekKey,
@@ -330,7 +331,7 @@ export function loadConfig(input = {}) {
       model: readStr(env, 'DEEPSEEK_MODEL', 'deepseek-flash'),
       proModel: readStr(env, 'DEEPSEEK_PRO_MODEL', 'deepseek-v4-pro'),
       temperature: Number(readStr(env, 'DEEPSEEK_TEMPERATURE', '0.6')) || 0.6,
-      timeoutMs: /** @type {number} */ (readInt(env, 'DEEPSEEK_TIMEOUT_MS', 15000, { min: 1000 })),
+      timeoutMs: /** @type {number} */ (readInt(env, 'DEEPSEEK_TIMEOUT_MS', 0, { min: 0 })),
     },
     model: {
       defaultAlias,
@@ -340,9 +341,10 @@ export function loadConfig(input = {}) {
       reasoning: /** @type {ReasoningMode} */ (reasoning),
       maxTokens,
       temperature: Number(readStr(env, 'NIM_TEMPERATURE', '0.6')) || 0.6,
-      timeoutMs: /** @type {number} */ (readInt(env, 'NIM_TIMEOUT_MS', 15000, { min: 1000 })),
+      timeoutMs: /** @type {number} */ (readInt(env, 'NIM_TIMEOUT_MS', 0, { min: 0 })),
     },
-    responseTimeoutMs: /** @type {number} */ (readInt(env, 'RESPONSE_TIMEOUT_MS', 30000, { min: 2000 })),
+    // 0 = no deadline (the bot waits until the provider answers).
+    responseTimeoutMs: /** @type {number} */ (readInt(env, 'RESPONSE_TIMEOUT_MS', 0, { min: 0 })),
     context: {
       dir: path.join(dataDir, 'contexts'),
       // 0 = unlimited

@@ -33,12 +33,16 @@ export class CircuitOpenError extends Error {
 const defaultSleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 /**
+ * Combine the caller signal with a timeout signal. A non-finite or <= 0 timeout means
+ * "no limit": the request waits until the caller aborts or the connection drops.
  * @param {AbortSignal|undefined} signal
  * @param {number} timeoutMs
- * @returns {AbortSignal}
+ * @returns {AbortSignal|undefined}
  */
 function withTimeout(signal, timeoutMs) {
-  const timeout = AbortSignal.timeout(Math.max(1, timeoutMs));
+  const limit = Number(timeoutMs);
+  const timeout = Number.isFinite(limit) && limit > 0 ? AbortSignal.timeout(limit) : null;
+  if (!timeout) return signal;
   if (!signal) return timeout;
   // @ts-ignore AbortSignal.any is available since Node 20.3
   return AbortSignal.any([signal, timeout]);

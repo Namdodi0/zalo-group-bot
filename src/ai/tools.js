@@ -104,7 +104,9 @@ export function createToolRuntime(options) {
         searchDepth: config.search.depth,
         maxResults: config.search.maxResults,
         country: config.search.country,
-        timeoutMs: ctx.deadline ? Math.max(1500, Math.min(9000, ctx.deadline - Date.now())) : undefined,
+        timeoutMs: Number.isFinite(ctx.deadline)
+          ? Math.max(1500, Math.min(9000, /** @type {number} */ (ctx.deadline) - Date.now()))
+          : 0,
       });
       metrics?.inc('tool.webSearch');
       logger.info('web search', { query, results: data.results.length, icon: '🔍' });
@@ -138,7 +140,9 @@ export function createToolRuntime(options) {
         maxResults: 3,
         includeImages: true,
         country: config.search.country,
-        timeoutMs: ctx.deadline ? Math.max(1500, Math.min(9000, ctx.deadline - Date.now())) : undefined,
+        timeoutMs: Number.isFinite(ctx.deadline)
+          ? Math.max(1500, Math.min(9000, /** @type {number} */ (ctx.deadline) - Date.now()))
+          : 0,
       });
 
       /** @type {string[]} */

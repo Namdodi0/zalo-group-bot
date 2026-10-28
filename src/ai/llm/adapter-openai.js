@@ -184,22 +184,27 @@ export function createOpenAiCompatAdapter(options) {
     payload.stream = true;
     payload.stream_options = { include_usage: true };
 
-    // Timeout for the "first byte" (TTFT), not the whole answer:
-    // NIM sometimes hangs a request and we must bail early to retry; a long answer still keeps generating.
-    const ttftMs = input.ttftMs ?? 8000;
-    const ttftController = new AbortController();
-    let ttftTimer = setTimeout(() => {
-      try {
-        ttftController.abort();
-      } catch {
-        // ignore
-      }
-    }, ttftMs);
-    /** @type {AbortSignal} */
-    const streamSignal = input.signal
-      ? // @ts-ignore AbortSignal.any is available since Node 20.3
-        AbortSignal.any([input.signal, ttftController.signal])
-      : ttftController.signal;
+    // First-token guard: bail out early when the provider sends no real token.
+    // ttftMs <= 0 disables the guard (no time limit at all).
+    const ttftMs = Number(input.ttftMs ?? 8000);
+    const ttftController = ttftMs > 0 ? new AbortController() : null;
+    let ttftTimer = ttftController
+      ? setTimeout(() => {
+          try {
+            ttftController.abort();
+          } catch {
+            // ignore
+          }
+        }, ttftMs)
+      : null;
+    /** @type {AbortSignal|undefined} */
+    let streamSignal = input.signal ?? undefined;
+    if (ttftController) {
+      // @ts-ignore AbortSignal.any is available since Node 20.3
+      streamSignal = input.signal
+        ? AbortSignal.any([input.signal, ttftController.signal])
+        : ttftController.signal;
+    }
 
     /** @type {Response} */
     let response;
@@ -219,7 +224,7 @@ export function createOpenAiCompatAdapter(options) {
       clearTimeout(ttftTimer);
       // Our own first-token guard fired (the caller's budget is still intact): the request
       // may succeed on a retry, so this must stay retryable — unlike a caller abort.
-      if (ttftController.signal.aborted && !input.signal?.aborted) {
+      if (ttftController?.signal.aborted && !input.signal?.aborted) {
         throw new HttpError(`${routeKey(payload.model)} first token timeout`, {
           service: routeKey(payload.model),
           retryable: true,
@@ -312,7 +317,7 @@ export function createOpenAiCompatAdapter(options) {
 
     if (streamError && !content && callMap.size === 0) {
       // Same split as above: guard fired → retryable; caller's deadline → no time left.
-      if (ttftController.signal.aborted && !input.signal?.aborted) {
+      if (ttftController?.signal.aborted && !input.signal?.aborted) {
         throw new HttpError(`${routeKey(payload.model)} first token timeout`, {
           service: routeKey(payload.model),
           retryable: true,
