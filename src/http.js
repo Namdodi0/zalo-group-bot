@@ -3,7 +3,7 @@ const RETRYABLE_STATUS = new Set([408, 425, 429, 500, 502, 503, 504]);
 export class HttpError extends Error {
   /**
    * @param {string} message
-   * @param {{status?: number, body?: string, service?: string, url?: string, retryable?: boolean, cause?: unknown}} [meta]
+   * @param {{status?: number, body?: string, service?: string, url?: string, retryable?: boolean, aborted?: boolean, cause?: unknown}} [meta]
    */
   constructor(message, meta = {}) {
     super(message);
@@ -13,6 +13,8 @@ export class HttpError extends Error {
     this.service = meta.service ?? 'unknown';
     this.url = meta.url ?? '';
     this.retryable = meta.retryable ?? false;
+    // Deliberately cancelled by the caller (budget/deadline): retrying is pointless.
+    this.aborted = Boolean(meta.aborted);
     this.cause = meta.cause;
   }
 }
@@ -192,6 +194,7 @@ export function createHttp(options = {}) {
             service,
             url,
             retryable: false,
+            aborted: true,
             cause: error,
           });
           throw aborted;
@@ -263,6 +266,7 @@ export function createHttp(options = {}) {
             service,
             url,
             retryable: false,
+            aborted: true,
             cause: error,
           });
         }

@@ -1,3 +1,5 @@
+import { HttpError } from '../../http.js';
+
 /**
  * @typedef {object} NimToolCall
  * @property {string} id
@@ -215,6 +217,15 @@ export function createOpenAiCompatAdapter(options) {
       });
     } catch (error) {
       clearTimeout(ttftTimer);
+      // Our own first-token guard fired (the caller's budget is still intact): the request
+      // may succeed on a retry, so this must stay retryable — unlike a caller abort.
+      if (ttftController.signal.aborted && !input.signal?.aborted) {
+        throw new HttpError(`${routeKey(payload.model)} first token timeout`, {
+          service: routeKey(payload.model),
+          retryable: true,
+          cause: error,
+        });
+      }
       throw error;
     }
 
@@ -238,7 +249,6 @@ export function createOpenAiCompatAdapter(options) {
         for (;;) {
           const { done, value } = await reader.read();
           if (done) break;
-          clearTimeout(ttftTimer);
           buffer += decoder.decode(value, { stream: true });
           let newline = buffer.indexOf('\n');
           while (newline >= 0) {
@@ -260,14 +270,18 @@ export function createOpenAiCompatAdapter(options) {
                     const delta = choice.delta ?? {};
                     if (choice.finish_reason) finishReason = String(choice.finish_reason);
                     if (typeof delta.content === 'string' && delta.content) {
+                      // A real token arrived: the first-token guard is satisfied.
+                      clearTimeout(ttftTimer);
                       content += delta.content;
                       if (!firstDeltaAt) firstDeltaAt = Date.now();
                       if (input.onDelta) await input.onDelta(delta.content);
                     }
                     if (typeof delta.reasoning_content === 'string' && delta.reasoning_content) {
+                      clearTimeout(ttftTimer);
                       reasoning += delta.reasoning_content;
                     }
                     if (Array.isArray(delta.tool_calls)) {
+                      clearTimeout(ttftTimer);
                       for (const part of delta.tool_calls) {
                         const index = Number(part.index ?? 0);
                         const current = callMap.get(index) ?? { id: '', name: '', args: '' };
@@ -297,6 +311,14 @@ export function createOpenAiCompatAdapter(options) {
     }
 
     if (streamError && !content && callMap.size === 0) {
+      // Same split as above: guard fired → retryable; caller's deadline → no time left.
+      if (ttftController.signal.aborted && !input.signal?.aborted) {
+        throw new HttpError(`${routeKey(payload.model)} first token timeout`, {
+          service: routeKey(payload.model),
+          retryable: true,
+          cause: streamError,
+        });
+      }
       throw streamError;
     }
 

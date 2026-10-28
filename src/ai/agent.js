@@ -28,21 +28,21 @@ const FALLBACK_MIN_MS = 2500;
 const MIN_ATTEMPT_MS = 1500;
 
 /**
- * Split the budget of one attempt. Non-streaming keeps part of the deadline for fallback;
- * streaming keeps none (a long answer must run until the deadline), the TTFT guard handles hangs.
+ * Split the budget of one attempt, always keeping part of the deadline for the fallback.
+ * Streaming used to keep none, which let one hung stream eat the whole budget and leave
+ * the user with an apology instead of an answer from the fallback model.
  * @param {{remainingMs: number, attempt: number, maxAttempts: number, streaming: boolean, aiTimeoutMs: number}} input
  */
 function planAttemptBudget(input) {
   const remaining = Math.max(0, input.remainingMs);
-  const reserveMs = input.streaming
-    ? 0
-    : Math.min(FALLBACK_RESERVE_MAX_MS, Math.floor(remaining * FALLBACK_RESERVE_RATIO));
+  const reserveMs = Math.min(FALLBACK_RESERVE_MAX_MS, Math.floor(remaining * FALLBACK_RESERVE_RATIO));
   const primaryMs = Math.max(0, remaining - reserveMs);
   const attemptsLeft = Math.max(1, input.maxAttempts - input.attempt + 1);
   const ttftMs = Math.max(4000, Math.min(input.aiTimeoutMs, Math.floor(remaining / 2), 9000));
 
   if (input.streaming) {
-    return { reserveMs, primaryMs, timeoutMs: remaining, ttftMs };
+    const timeoutMs = Math.min(remaining, Math.max(MIN_ATTEMPT_MS, primaryMs));
+    return { reserveMs, primaryMs, timeoutMs, ttftMs };
   }
 
   const share = Math.max(MIN_ATTEMPT_MS, Math.floor(primaryMs / attemptsLeft));
@@ -517,18 +517,19 @@ export function createAgent(deps) {
         }
       }
 
-      // Last-resort fallback: drop tools so we still get an answer instead of an error.
+      // Last-resort fallback with a DIFFERENT model: drop tools so we still get an answer.
       // `flushed` = the head was already sent to the user; calling fallback now would duplicate content.
       if (!response && !flushed) {
+        const fallbackAlias = llm.fallbackFor(record);
         let left = deadline - Date.now();
         if (left > 6000) {
           await sleep(800);
           left = deadline - Date.now();
         }
-        if (left > FALLBACK_MIN_MS) {
+        if (fallbackAlias && left > FALLBACK_MIN_MS) {
           const fallbackStarted = Date.now();
           try {
-            response = await llm.chatWith(llm.fallbackAlias, {
+            response = await llm.chatWith(fallbackAlias, {
               messages,
               reasoning: 'none',
               temperature: config.ai.temperature,
@@ -541,13 +542,19 @@ export function createAgent(deps) {
             metrics.inc('llm.fallback');
             logger.warn('llm fallback (no tools) succeeded', {
               chatId: event.chatId,
-              fallback: llm.fallbackAlias,
+              fallback: fallbackAlias,
               icon: '🛟',
             });
           } catch (error) {
             llmMs += Date.now() - fallbackStarted;
             lastError = error;
           }
+        } else if (!fallbackAlias) {
+          logger.debug('fallback skipped: no other model available', {
+            chatId: event.chatId,
+            model: target.model,
+            icon: '⏭️',
+          });
         } else {
           logger.debug('fallback skipped: not enough time', {
             chatId: event.chatId,

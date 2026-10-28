@@ -33,6 +33,20 @@ export function createModelRouter(options) {
     return catalog.find(input);
   }
 
+  /**
+   * Fallback alias for a chat. Must resolve to a DIFFERENT model: retrying the same hung
+   * model only burns the deadline that the fallback needs.
+   * @param {any} record
+   * @returns {string|null}
+   */
+  function fallbackFor(record) {
+    const primary = resolve(record);
+    const usable = (item) => Boolean(item) && item.alias !== primary.alias && item.model !== primary.model;
+    const preferred = catalog.specFor(catalog.fallbackAlias);
+    if (usable(preferred)) return catalog.fallbackAlias;
+    return catalog.list().find(usable)?.alias ?? null;
+  }
+
   function list() {
     return catalog.list();
   }
@@ -71,6 +85,7 @@ export function createModelRouter(options) {
     chatWith,
     resolve,
     find,
+    fallbackFor,
     list,
     registry: catalog.entries,
     catalog,

@@ -81,6 +81,10 @@ test('errors: map status/body to stable codes', () => {
   assert.equal(asLlmError(new HttpError('x', { status: 400 })).code, LLM_ERROR.BAD_REQUEST);
   assert.equal(asLlmError(new HttpError('x', { status: 0 })).code, LLM_ERROR.TIMEOUT);
 
+  const abortedByCaller = asLlmError(new HttpError('x aborted by caller', { status: 0, aborted: true }));
+  assert.equal(abortedByCaller.code, LLM_ERROR.ABORTED);
+  assert.equal(abortedByCaller.retryable, false);
+
   const overflow = asLlmError(
     new HttpError('bad request', { status: 400, body: '{"error":"maximum context length exceeded"}' }),
   );

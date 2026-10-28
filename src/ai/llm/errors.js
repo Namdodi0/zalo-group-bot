@@ -80,6 +80,10 @@ export function asLlmError(error, meta = {}) {
 
   if (error instanceof HttpError) {
     const status = Number(error.status ?? 0);
+    // Deliberate cancellation by the caller: there is no time left, so never retry.
+    if (error.aborted) {
+      return new LlmError(LLM_ERROR.ABORTED, message, { ...meta, status, retryable: false, cause: error, body });
+    }
     if (status === 401 || status === 403) {
       return new LlmError(LLM_ERROR.AUTH, message, { ...meta, status, retryable: false, cause: error, body });
     }

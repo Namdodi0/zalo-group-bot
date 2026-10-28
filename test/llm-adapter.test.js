@@ -144,6 +144,38 @@ test('drops reasoning_content from the returned result', async () => {
   assert.equal(result.reasoning, 'internal thoughts');
 });
 
+test('stream: a keepalive chunk alone does not satisfy the first-token guard', async () => {
+  const encoder = new TextEncoder();
+  const http = {
+    async openStream(_url, opts) {
+      const body = new ReadableStream({
+        start(controller) {
+          // Role-only delta: the stream is alive but no real token has arrived yet.
+          controller.enqueue(encoder.encode('data: {"choices":[{"delta":{"role":"assistant"}}]}\n\n'));
+          opts.signal.addEventListener('abort', () => controller.error(opts.signal.reason));
+        },
+      });
+      return new Response(body, { status: 200 });
+    },
+  };
+  const client = makeClient(http);
+  await assert.rejects(
+    () =>
+      client.chat({
+        messages: [{ role: 'user', content: 'hi' }],
+        reasoning: 'none',
+        stream: true,
+        ttftMs: 30,
+        timeoutMs: 5000,
+      }),
+    (error) => {
+      assert.equal(error.retryable, true);
+      assert.match(error.message, /first token timeout/);
+      return true;
+    },
+  );
+});
+
 test('warmup: returns {ok, ms, model}, 1 token, supports a model override', async () => {
   const http = fakeHttp([], standardResponse);
   const client = makeClient(http);

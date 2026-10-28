@@ -95,6 +95,7 @@ async function setup(options = {}) {
     find: () => target,
     list: () => [target],
     fallbackAlias: 'nim-light',
+    fallbackFor: () => 'nim-light',
     chat: (input) => reply(input),
     chatWith: (_alias, input) => reply(input, true),
     async warmup() {
@@ -403,7 +404,7 @@ test('planAttemptBudget: non-streaming reserves 25% of the deadline for fallback
   assert.ok(second.reserveMs >= 2500);
 });
 
-test('planAttemptBudget: streaming uses the whole deadline, TTFT capped at 9s', () => {
+test('planAttemptBudget: streaming still reserves room for the fallback', () => {
   const plan = agentTest.planAttemptBudget({
     remainingMs: 30_000,
     attempt: 1,
@@ -411,9 +412,23 @@ test('planAttemptBudget: streaming uses the whole deadline, TTFT capped at 9s', 
     streaming: true,
     aiTimeoutMs: 15_000,
   });
-  assert.equal(plan.reserveMs, 0);
-  assert.equal(plan.timeoutMs, 30_000);
+  assert.equal(plan.reserveMs, 7500);
+  assert.equal(plan.primaryMs, 22_500);
+  assert.equal(plan.timeoutMs, 22_500);
   assert.equal(plan.ttftMs, 9000);
+});
+
+test('planAttemptBudget: a streaming retry also leaves the fallback reserve', () => {
+  const plan = agentTest.planAttemptBudget({
+    remainingMs: 20_000,
+    attempt: 2,
+    maxAttempts: 2,
+    streaming: true,
+    aiTimeoutMs: 15_000,
+  });
+  assert.equal(plan.reserveMs, 5000);
+  assert.equal(plan.timeoutMs, 15_000);
+  assert.ok(20_000 - plan.timeoutMs >= 2500);
 });
 
 test('planAttemptBudget: a tight deadline gives a short attempt with no room for fallback', () => {
@@ -436,6 +451,16 @@ test('retryable primary failure: retry then fallback, the user still gets an ans
   await agent.handle(textEvent('hi'));
 
   assert.equal(nimCalls.length, 3); // 2 primary attempts + 1 fallback
+  assert.match(sent.at(-1).text, /Hello/);
+});
+
+test('budget abort is not retried: the remaining time goes to the fallback', async () => {
+  const { agent, sent, nimCalls } = await setup({
+    primaryError: new HttpError('nim:model aborted by caller', { status: 0, aborted: true }),
+  });
+  await agent.handle(textEvent('hi'));
+
+  assert.equal(nimCalls.length, 2); // 1 primary attempt (no retry) + 1 fallback
   assert.match(sent.at(-1).text, /Hello/);
 });
 
