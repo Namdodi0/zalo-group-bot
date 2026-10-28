@@ -9,7 +9,7 @@ function fakeHttp(payloads, responseBody) {
   const http = {
     calls: [],
     async requestJson(url, opts) {
-      http.calls.push({ url, payload: JSON.parse(opts.body) });
+      http.calls.push({ url, payload: JSON.parse(opts.body), service: opts.service });
       return { status: 200, data: responseBody, headers: new Headers(), latencyMs: 1 };
     },
     async openStream() {
@@ -78,6 +78,19 @@ test('reasoning auto map sang low, tools được gửi kèm', async () => {
   assert.equal(http.calls[0].payload.reasoning_effort, 'low');
   assert.equal(http.calls[0].payload.tool_choice, 'auto');
   assert.equal(http.calls[0].payload.tools.length, 1);
+});
+
+test('circuit breaker keyed theo provider+model, không khoá cả provider', async () => {
+  const http = fakeHttp([], standardResponse);
+  const client = makeClient(http);
+  await client.chat({ messages: [{ role: 'user', content: 'hi' }], reasoning: 'none' });
+  await client.chat({
+    messages: [{ role: 'user', content: 'hi' }],
+    reasoning: 'none',
+    model: 'nvidia/nemotron-3.5-lightning-30b-a3b',
+  });
+  assert.equal(http.calls[0].service, 'nim:nvidia/nemotron-3.5-super-vl-120b-a12b');
+  assert.equal(http.calls[1].service, 'nim:nvidia/nemotron-3.5-lightning-30b-a3b');
 });
 
 test('cho phép override model (fallback)', async () => {

@@ -9,6 +9,7 @@ import { createToolRuntime } from '../src/ai/tools.js';
 import { createCommands } from '../src/commands/index.js';
 import { createCompactionEngine } from '../src/context/compaction/engine.js';
 import { createContextStore } from '../src/context/store.js';
+import { HttpError } from '../src/http.js';
 import { createMetrics } from '../src/metrics.js';
 import { makeConfig, silentLogger, textEvent } from '../test-utils/helpers.js';
 
@@ -65,7 +66,7 @@ async function setup(options = {}) {
     model: 'deepseek-flash',
     label: 'DeepSeek V4.1 Flash',
   };
-  async function reply(input) {
+  async function reply(input, viaFallback = false) {
     nimCalls.push(input);
     if (options.delayMs) await new Promise((resolve) => setTimeout(resolve, options.delayMs));
     if (options.overflowFirst && !overflowed) {
@@ -73,6 +74,8 @@ async function setup(options = {}) {
       throw new LlmError(LLM_ERROR.CONTEXT_WINDOW_EXCEEDED, 'maximum context length exceeded', { status: 400 });
     }
     if (options.nimError) throw options.nimError;
+    if (options.primaryError && !viaFallback) throw options.primaryError;
+    if (options.fallbackError && viaFallback) throw options.fallbackError;
     if (options.deltaText && input.onDelta) await input.onDelta(options.deltaText);
     const item = replies[Math.min(index, replies.length - 1)];
     index += 1;
@@ -93,7 +96,7 @@ async function setup(options = {}) {
     list: () => [target],
     fallbackAlias: 'nim-light',
     chat: (input) => reply(input),
-    chatWith: (_alias, input) => reply(input),
+    chatWith: (_alias, input) => reply(input, true),
     async warmup() {
       return 1;
     },
@@ -374,6 +377,66 @@ test('queue đầy thì bỏ tin và báo bận', async () => {
   const second = agent.enqueue(textEvent('hai'));
   await Promise.all([first, second]);
   assert.ok(sent.some((message) => /nhiều tin/.test(message.text)));
+});
+
+test('planAttemptBudget: non-streaming chừa 25% deadline cho fallback', () => {
+  const first = agentTest.planAttemptBudget({
+    remainingMs: 30_000,
+    attempt: 1,
+    maxAttempts: 2,
+    streaming: false,
+    aiTimeoutMs: 15_000,
+  });
+  assert.equal(first.reserveMs, 7500);
+  assert.equal(first.primaryMs, 22_500);
+  assert.equal(first.timeoutMs, 11_250);
+  assert.ok(first.ttftMs <= 9000);
+
+  const second = agentTest.planAttemptBudget({
+    remainingMs: 17_500,
+    attempt: 2,
+    maxAttempts: 2,
+    streaming: false,
+    aiTimeoutMs: 15_000,
+  });
+  assert.equal(second.timeoutMs, 13_125);
+  assert.ok(second.reserveMs >= 2500);
+});
+
+test('planAttemptBudget: streaming dùng trọn deadline, TTFT tối đa 9s', () => {
+  const plan = agentTest.planAttemptBudget({
+    remainingMs: 30_000,
+    attempt: 1,
+    maxAttempts: 2,
+    streaming: true,
+    aiTimeoutMs: 15_000,
+  });
+  assert.equal(plan.reserveMs, 0);
+  assert.equal(plan.timeoutMs, 30_000);
+  assert.equal(plan.ttftMs, 9000);
+});
+
+test('planAttemptBudget: deadline sát thì attempt ngắn, không đủ chỗ fallback', () => {
+  const plan = agentTest.planAttemptBudget({
+    remainingMs: 3000,
+    attempt: 1,
+    maxAttempts: 2,
+    streaming: false,
+    aiTimeoutMs: 15_000,
+  });
+  assert.equal(plan.reserveMs, 750);
+  assert.ok(plan.reserveMs < 2500);
+  assert.equal(plan.timeoutMs, 1500);
+});
+
+test('primary lỗi retryable: retry rồi fallback, user vẫn nhận câu trả lời', async () => {
+  const { agent, sent, nimCalls } = await setup({
+    primaryError: new HttpError('upstream down', { status: 503 }),
+  });
+  await agent.handle(textEvent('chào'));
+
+  assert.equal(nimCalls.length, 3); // 2 lần primary + 1 fallback
+  assert.match(sent.at(-1).text, /Xin chào/);
 });
 
 test('context thời gian: message user riêng, bền vững và không sửa lượt user', async () => {

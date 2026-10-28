@@ -22,6 +22,33 @@ import { buildSearchContext, createZaloPrompt } from './prompt/index.js';
 const MAX_CONCURRENT_CHATS = 4;
 const MAX_TOOL_ROUNDS = 3;
 const CHUNK_LIMIT = 1900;
+const FALLBACK_RESERVE_RATIO = 0.25;
+const FALLBACK_RESERVE_MAX_MS = 8000;
+const FALLBACK_MIN_MS = 2500;
+const MIN_ATTEMPT_MS = 1500;
+
+/**
+ * Chia ngân sách một attempt. Non-streaming giữ lại một phần deadline cho fallback;
+ * streaming không giữ (câu trả lời dài cần chạy tới deadline), TTFT guard lo phần treo.
+ * @param {{remainingMs: number, attempt: number, maxAttempts: number, streaming: boolean, aiTimeoutMs: number}} input
+ */
+function planAttemptBudget(input) {
+  const remaining = Math.max(0, input.remainingMs);
+  const reserveMs = input.streaming
+    ? 0
+    : Math.min(FALLBACK_RESERVE_MAX_MS, Math.floor(remaining * FALLBACK_RESERVE_RATIO));
+  const primaryMs = Math.max(0, remaining - reserveMs);
+  const attemptsLeft = Math.max(1, input.maxAttempts - input.attempt + 1);
+  const ttftMs = Math.max(4000, Math.min(input.aiTimeoutMs, Math.floor(remaining / 2), 9000));
+
+  if (input.streaming) {
+    return { reserveMs, primaryMs, timeoutMs: remaining, ttftMs };
+  }
+
+  const share = Math.max(MIN_ATTEMPT_MS, Math.floor(primaryMs / attemptsLeft));
+  const timeoutMs = Math.max(1000, Math.min(input.aiTimeoutMs, share, primaryMs));
+  return { reserveMs, primaryMs, timeoutMs, ttftMs };
+}
 
 /** @param {number} ms */
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -408,10 +435,17 @@ export function createAgent(deps) {
       /** @type {unknown} */
       let lastError = null;
 
+      let attemptIndex = 0;
       const callOnce = async () => {
+        attemptIndex += 1;
         const left = deadline - Date.now();
-        // TTFT tối đa ~9s: nếu provider treo thì bỏ và retry sớm thay vì chờ hết ngân sách.
-        const attemptTimeout = Math.max(4000, Math.min(config.ai.timeoutMs, Math.floor(left / 2), 9000));
+        const budget = planAttemptBudget({
+          remainingMs: left,
+          attempt: attemptIndex,
+          maxAttempts: retryExecutor.maxAttempts,
+          streaming,
+          aiTimeoutMs: config.ai.timeoutMs,
+        });
         // Đo cả lần gọi thất bại: llmMs là tổng thời gian thực sự tiêu vào LLM.
         const callStarted = Date.now();
         try {
@@ -424,9 +458,9 @@ export function createAgent(deps) {
             maxTokens: config.ai.maxTokens,
             stream: streaming,
             onDelta,
-            ttftMs: attemptTimeout,
-            timeoutMs: streaming ? left : Math.max(4000, Math.min(config.ai.timeoutMs, left)),
-            signal: AbortSignal.timeout(left),
+            ttftMs: budget.ttftMs,
+            timeoutMs: budget.timeoutMs,
+            signal: AbortSignal.timeout(Math.max(1, budget.timeoutMs)),
           });
         } finally {
           llmMs += Date.now() - callStarted;
@@ -485,13 +519,14 @@ export function createAgent(deps) {
       }
 
       // Fallback cuối: bỏ tool để vẫn có câu trả lời thay vì báo lỗi.
-      if (!response) {
+      // `flushed` = đã gửi phần đầu cho user; gọi fallback lúc này sẽ gửi trùng nội dung.
+      if (!response && !flushed) {
         let left = deadline - Date.now();
-        if (left > 5000) {
+        if (left > 6000) {
           await sleep(800);
           left = deadline - Date.now();
         }
-        if (left > 2000) {
+        if (left > FALLBACK_MIN_MS) {
           const fallbackStarted = Date.now();
           try {
             response = await llm.chatWith(llm.fallbackAlias, {
@@ -500,7 +535,7 @@ export function createAgent(deps) {
               temperature: config.ai.temperature,
               maxTokens: config.ai.maxTokens,
               stream: false,
-              timeoutMs: Math.max(1500, Math.min(config.ai.timeoutMs, left - 500)),
+              timeoutMs: Math.max(1500, Math.min(config.ai.timeoutMs, left - 300)),
               signal: AbortSignal.timeout(left),
             });
             llmMs += Date.now() - fallbackStarted;
@@ -514,6 +549,12 @@ export function createAgent(deps) {
             llmMs += Date.now() - fallbackStarted;
             lastError = error;
           }
+        } else {
+          logger.debug('fallback bỏ qua: không đủ thời gian', {
+            chatId: event.chatId,
+            leftMs: left,
+            icon: '⏭️',
+          });
         }
       }
 
@@ -889,4 +930,4 @@ export function createAgent(deps) {
   return { handle, enqueue, pending, drain, seenSize: () => seen.size };
 }
 
-export const __test__ = { findBreak };
+export const __test__ = { findBreak, planAttemptBudget };

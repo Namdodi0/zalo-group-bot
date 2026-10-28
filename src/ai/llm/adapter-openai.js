@@ -97,13 +97,17 @@ export function createOpenAiCompatAdapter(options) {
 
   const endpoint = `${baseUrl}/chat/completions`;
 
+  // Breaker keyed theo provider+model: một model chậm/treo không khoá cả provider.
+  /** @param {unknown} modelId */
+  const routeKey = (modelId) => `${provider}:${String(modelId ?? model)}`;
+
   /**
    * @param {Record<string, any>} payload
    * @param {{signal?: AbortSignal|null, timeoutMs?: number}} [opts]
    */
   async function post(payload, opts = {}) {
     return http.requestJson(endpoint, {
-      service: provider,
+      service: routeKey(payload.model),
       label: 'chat.completions',
       headers: {
         Authorization: `Bearer ${apiKey}`,
@@ -199,7 +203,7 @@ export function createOpenAiCompatAdapter(options) {
     let response;
     try {
       response = await http.openStream(endpoint, {
-        service: provider,
+        service: routeKey(payload.model),
         headers: {
           Authorization: `Bearer ${apiKey}`,
           'Content-Type': 'application/json',
