@@ -15,7 +15,7 @@ A chat bot for **a single Zalo group**, powered by **NVIDIA NIM** (`nvidia/nemot
 - **Low latency**: no `max_tokens` cap, `reasoning_effort: none` by default (~0 thinking tokens), typing indicator, model warm-up, streaming + partial sends for slow answers, search/image cache, retry + circuit breaker.
 - **Complete answers, never cut short**: no fixed sentence budget — length follows the question; questions that need explanation/comparison/instructions come with numbers and examples. No length hints are injected into the request sent to the model.
 - **Reminders** (`/remind 20:00 mai họp nhóm`) persisted to `data/reminders.json`, and **pinned facts** (`/remember`) that survive context compaction.
-- Commands: `/help`, `/reset`, `/status`, `/id`, `/search`, `/image`, `/sticker`, `/remind`, `/remember`, `/forget`, `/model`, `/think`, `/split`, `/compact`, `/ping`.
+- Commands: `/help`, `/reset`, `/status`, `/id`, `/summary`, `/search`, `/image`, `/sticker`, `/remind`, `/remember`, `/forget`, `/model`, `/think`, `/split`, `/compact`, `/ping`.
 
 ## Requirements
 
@@ -155,6 +155,7 @@ After the first run the log prints the `chatId` (or type `/id` in the group) —
 | `/tone [roast\|hard\|friendly\|default]` | Change the tone for this chat: `roast` (mocking), `hard` (blunt, heavy swearing), `friendly`, `default` = follow `BOT_TONE` |
 | `/think on\|off\|low\|high\|auto` | Turn reasoning on/off for this chat |
 | `/split on\|off\|auto` | Control splitting replies into several messages for this chat (`off` = merge into one message, `auto` = follow `PROGRESSIVE`) |
+| `/summary [N]` | Summarize the last N messages (2–200, default 30) without changing the context |
 | `/compact` | Compact the context right away (admin): shrink tool results → summarize older ranges |
 | `/ping` | Measure the Zalo API round-trip |
 

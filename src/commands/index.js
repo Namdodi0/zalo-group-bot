@@ -3,6 +3,12 @@ import { createTokenMeter } from '../context/token-meter.js';
 import { formatDuration } from '../text/format.js';
 import { REMINDER_LIMITS, formatReminderTime, parseReminderArgs } from '../ai/reminders.js';
 
+const SUMMARY_INSTRUCTION =
+  'Bạn tóm tắt một đoạn hội thoại chat. Viết một đoạn ngắn bằng tiếng Việt (tối đa 600 ký tự), giữ lại: thông tin cá nhân người dùng đã nêu, chủ đề đang bàn, quyết định và câu trả lời quan trọng. Chỉ trả về bản tóm tắt, không mở bài.';
+const SUMMARY_DEFAULT_COUNT = 30;
+const SUMMARY_MAX_COUNT = 200;
+const SUMMARY_MAX_TRANSCRIPT = 12_000;
+
 /**
  * @param {string} text
  * @returns {{name: string, args: string}|null}
@@ -39,6 +45,7 @@ export function createCommands(deps) {
       '• `/id` — id of the current chat',
       '• `/reset` — clear this chat\'s context (keeps model/tone); `/reset all` also clears the settings',
       '• `/compact` — compact the context now (admin)',
+      '• `/summary [N]` — summarize the last N messages (default 30)',
       '• `/search <question>` — force a web search for the question',
       '• `/image <keywords>` — find and send an image',
       '• `/sticker [mood]` — send a sticker; `/sticker add <id> [name]` to add an ID',
@@ -174,6 +181,66 @@ export function createCommands(deps) {
         if (result.summarized) parts.push('summary');
         if (result.pruned) parts.push('pruned tool results');
         return { kind: 'text', text: `Compacted context (${parts.join(', ')}) — ~${before} → ~${after} tokens.` };
+      }
+
+      case 'summary': {
+        const raw = args.trim();
+        let count = SUMMARY_DEFAULT_COUNT;
+        if (raw) {
+          const parsed = Number(raw);
+          if (!Number.isInteger(parsed) || parsed < 2 || parsed > SUMMARY_MAX_COUNT) {
+            return {
+              kind: 'text',
+              text: `Dùng \`/summary [số tin]\` (2–${SUMMARY_MAX_COUNT}, mặc định ${SUMMARY_DEFAULT_COUNT}).`,
+            };
+          }
+          count = parsed;
+        }
+        const history = (ctx.record?.messages ?? [])
+          .filter(
+            (message) =>
+              (message.kind ?? 'turn') === 'turn' &&
+              typeof message.text === 'string' &&
+              message.text.trim().length > 0,
+          )
+          .slice(-count);
+        if (history.length < 2) {
+          return { kind: 'text', text: 'Chưa đủ tin nhắn để tóm tắt (cần ít nhất 2).' };
+        }
+        const transcript = history
+          .map(
+            (message) =>
+              `${message.role === 'assistant' ? 'Bot' : message.name || 'User'}: ${String(message.text).trim()}`,
+          )
+          .join('\n')
+          .slice(0, SUMMARY_MAX_TRANSCRIPT);
+        const timeoutMs =
+          config.responseTimeoutMs > 0 ? Math.max(1500, config.responseTimeoutMs - 300) : 0;
+        try {
+          const response = await models.chat({
+            record: ctx.record,
+            messages: [
+              { role: 'system', content: SUMMARY_INSTRUCTION },
+              { role: 'user', content: transcript },
+            ],
+            reasoning: 'none',
+            temperature: 0.3,
+            maxTokens: 300,
+            stream: false,
+            timeoutMs,
+            ...(timeoutMs > 0 ? { signal: AbortSignal.timeout(timeoutMs) } : {}),
+          });
+          const text = String(/** @type {any} */ (response)?.content ?? '').trim();
+          if (!text) {
+            return { kind: 'text', text: 'Model không trả về bản tóm tắt, thử lại sau.' };
+          }
+          return { kind: 'text', text: `**Tóm tắt ${history.length} tin gần nhất:**\n\n${text}` };
+        } catch (error) {
+          logger?.warn('summary command failed', {
+            error: String(/** @type {any} */ (error)?.message ?? error),
+          });
+          return { kind: 'text', text: `Không tóm tắt được: ${String(/** @type {any} */ (error)?.message ?? error)}` };
+        }
       }
 
       case 'search': {

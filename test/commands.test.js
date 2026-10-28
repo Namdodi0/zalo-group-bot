@@ -298,3 +298,41 @@ test('/remind lists and removes reminders', async () => {
   result = await commands.run({ name: 'remind', args: 'remove 1' }, ctx(d));
   assert.match(result.text, /Đã xoá nhắc #1/);
 });
+
+test('/summary summarizes the last N turn messages', async () => {
+  const d = deps();
+  let received = null;
+  d.models.chat = async (input) => {
+    received = input;
+    return { content: 'Tóm tắt nội dung' };
+  };
+  const commands = createCommands(d);
+  const record = {
+    messages: [
+      { role: 'user', kind: 'turn', text: 'a' },
+      { role: 'assistant', kind: 'turn', text: 'b' },
+      { role: 'user', kind: 'context', text: 'now' },
+      { role: 'user', kind: 'turn', text: 'c' },
+    ],
+    turns: 2,
+    meta: { thinking: null },
+  };
+  const result = await commands.run({ name: 'summary', args: '2' }, ctx(d, { record }));
+  assert.match(result.text, /Tóm tắt 2 tin/);
+  assert.match(result.text, /Tóm tắt nội dung/);
+  const joined = received.messages.map((message) => message.content).join('\n');
+  assert.match(joined, /a/);
+  assert.match(joined, /c/);
+  assert.equal(joined.includes('now'), false);
+  assert.equal(received.reasoning, 'none');
+});
+
+test('/summary validates the count and the history', async () => {
+  const d = deps();
+  d.models.chat = async () => ({ content: 'x' });
+  const commands = createCommands(d);
+  let result = await commands.run({ name: 'summary', args: 'abc' }, ctx(d));
+  assert.match(result.text, /2–200/);
+  result = await commands.run({ name: 'summary', args: '' }, ctx(d));
+  assert.match(result.text, /Chưa đủ tin nhắn/);
+});
