@@ -20,7 +20,8 @@ import path from 'node:path';
  * @property {StoredMessage[]} messages
  * @property {number} turns
  * @property {number} updatedAt
- * @property {{thinking: string|null}} meta
+ * @property {{thinking?: string|null, tone?: string|null, model?: string|null, split?: string|null}} meta
+ * @property {string[]} [seen] message_id gần đây — chống xử lý trùng sau restart
  */
 
 /**
@@ -63,6 +64,7 @@ export function createContextStore(options) {
       turns: 0,
       updatedAt: now(),
       meta: { thinking: null },
+      seen: [],
     };
   }
 
@@ -76,10 +78,14 @@ export function createContextStore(options) {
     );
   }
 
+  let writeSeq = 0;
+
   /** @param {ChatRecord} record */
   async function persist(record) {
     const file = fileFor(record.chatId);
-    const tmp = `${file}.${process.pid}.tmp`;
+    // Tên tmp duy nhất: debounce và flush() có thể ghi cùng chat đồng thời.
+    writeSeq += 1;
+    const tmp = `${file}.${process.pid}.${writeSeq}.tmp`;
     const payload = JSON.stringify(record);
     await fsp.writeFile(tmp, payload, 'utf8');
     await fsp.rename(tmp, file);
@@ -132,6 +138,7 @@ export function createContextStore(options) {
     if (meta.chatType) record.chatType = meta.chatType;
     if (!record.meta) record.meta = { thinking: null };
     if (!Array.isArray(record.messages)) record.messages = [];
+    if (!Array.isArray(record.seen)) record.seen = [];
     memory.set(chatId, record);
     evictIfNeeded();
     return record;
@@ -248,6 +255,18 @@ export function createContextStore(options) {
           // ignore
         }
       }
+    }
+    // File đã xoá mà bản trong RAM vẫn còn thì TTL vô hiệu với chat đang mở:
+    // bỏ luôn record cũ (chat sẽ nạp lại từ đĩa như mới ở lần sau).
+    for (const [chatId, record] of [...memory]) {
+      // updatedAt lạ/thiếu (file cũ hỏng) thì giữ lại, không suy đoán là quá hạn.
+      if (dirty.has(chatId) || !Number.isFinite(record.updatedAt) || record.updatedAt >= cutoff) continue;
+      const timer = timers.get(chatId);
+      if (timer) {
+        clearTimeout(timer);
+        timers.delete(chatId);
+      }
+      memory.delete(chatId);
     }
     return removed;
   }

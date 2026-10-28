@@ -276,6 +276,73 @@ test('PROGRESSIVE=on gửi tách đoạn sớm', async () => {
   assert.match(sent[0].text, /^a+\./);
 });
 
+test('meta.split=off gộp trả lời vào một tin dù PROGRESSIVE=on', async () => {
+  const head = `${'a'.repeat(140)}. `;
+  const { agent, sent, store } = await setup({
+    replies: [{ content: `${head}phần còn lại` }],
+    deltaText: head,
+    configOverrides: { progressive: 'on' },
+  });
+  const record = await store.get('chat-1');
+  record.meta.split = 'off';
+  await agent.handle(textEvent('kể chuyện dài'));
+  assert.equal(sent.length, 1, `gửi ${sent.length} tin`);
+  assert.match(sent[0].text, /phần còn lại/);
+});
+
+test('dedupe bền: message_id đã lưu trong context thì bỏ qua', async () => {
+  const { agent, sent, store } = await setup();
+  const record = await store.get('chat-1');
+  record.seen = ['msg-old'];
+  await agent.handle(textEvent('chào lại', { messageId: 'msg-old' }));
+  assert.equal(sent.length, 0);
+});
+
+test('USER_RATE_LIMIT_PER_MINUTE chặn spam theo người gửi', async () => {
+  const { agent, sent } = await setup({ configOverrides: { userRateLimitPerMinute: 1 } });
+  await agent.handle(textEvent('một'));
+  await agent.handle(textEvent('hai'));
+  assert.equal(sent.length, 1);
+});
+
+test('drain chờ tin đang xử lý gửi xong', async () => {
+  const { agent, sent } = await setup({ delayMs: 60 });
+  const task = agent.enqueue(textEvent('chờ tôi'));
+  const left = await agent.drain(5000);
+  assert.equal(left, 0);
+  await task;
+  assert.equal(sent.length, 1);
+});
+
+test('tool round không làm mất phần trả lời cuối', async () => {
+  const head = `${'a'.repeat(140)}. `;
+  const { agent, sent } = await setup({
+    replies: [
+      { content: head, toolCalls: [{ id: 'c1', name: 'web_search', arguments: { query: 'x' } }] },
+      { content: 'câu trả lời cuối' },
+    ],
+    deltaText: head,
+    configOverrides: { progressive: 'on' },
+  });
+  await agent.handle(textEvent('tìm giúp'));
+  assert.ok(
+    sent.some((message) => /câu trả lời cuối/.test(message.text)),
+    `sent=${JSON.stringify(sent)}`,
+  );
+});
+
+test('MAX_MESSAGES_PER_REPLY=1 thì không tách sớm, không mất phần còn lại', async () => {
+  const head = `${'b'.repeat(140)}. `;
+  const { agent, sent } = await setup({
+    replies: [{ content: `${head}phần cuối` }],
+    deltaText: head,
+    configOverrides: { progressive: 'on', maxMessagesPerReply: 1 },
+  });
+  await agent.handle(textEvent('kể chuyện'));
+  assert.equal(sent.length, 1);
+  assert.match(sent[0].text, /phần cuối/);
+});
+
 test('queue đầy thì bỏ tin và báo bận', async () => {
   const { agent, sent } = await setup({ delayMs: 40, configOverrides: { maxQueueDepth: 1 } });
   const first = agent.enqueue(textEvent('một'));

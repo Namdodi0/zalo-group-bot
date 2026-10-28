@@ -40,6 +40,7 @@ export function createCommands(deps) {
       '• `/model` — xem/đổi model cho chat này',
       '• `/tone` — xem/đổi giọng điệu (roast = cà khịa)',
       '• `/think on|off|low|high` — bật/tắt suy luận cho chat này',
+      '• `/split on|off|auto` — tắt/bật chia trả lời thành nhiều tin',
       '• `/ping` — kiểm tra kết nối tới Zalo',
       '',
       config.mode === 'polling'
@@ -86,7 +87,7 @@ export function createCommands(deps) {
       `• Phản hồi: p50 ${replyLatency ? `${replyLatency.p50}ms` : 'n/a'} · p95 ${replyLatency ? `${replyLatency.p95}ms` : 'n/a'}`,
       `• Tin nhận: ${count('messages.in')} · Đã trả lời: ${count('messages.replied')} · Lỗi: ${count('messages.error')}`,
       `• Web search: ${config.search.enabled ? `${config.search.depth}/${config.search.maxResults} (auto: ${config.search.auto ? 'on' : 'off'})` : 'tắt'} · Ảnh: ${config.image.enabled ? 'bật' : 'tắt'}`,
-      `• Emoji: ${config.emoji ? 'bật' : 'tắt'} · Typing: ${config.typing ? 'bật' : 'tắt'} · Progressive: ${config.progressive}`,
+      `• Emoji: ${config.emoji ? 'bật' : 'tắt'} · Typing: ${config.typing ? 'bật' : 'tắt'} · Progressive: ${config.progressive}${record?.meta?.split ? ` (chat này: ${record.meta.split})` : ''}`,
       `• Chat: \`${ctx.chatId}\` (${ctx.chatType})`,
     ];
 
@@ -313,6 +314,47 @@ export function createCommands(deps) {
           return { kind: 'text', text: 'Đã trở về chế độ suy luận theo cấu hình.' };
         }
         return { kind: 'text', text: 'Giá trị không hợp lệ. Dùng `/think off|low|high|auto`.' };
+      }
+
+      case 'split': {
+        if (!canManage(ctx)) {
+          return { kind: 'text', text: 'Chỉ admin của group mới được đổi chế độ chia tin.' };
+        }
+        if (!ctx.record.meta) ctx.record.meta = { thinking: null };
+        const value = args.toLowerCase();
+        const current = ctx.record.meta.split ?? 'theo cấu hình';
+        const persist = () => {
+          try {
+            store.touch?.(ctx.chatId);
+          } catch (error) {
+            logger?.debug('persist split mode failed', { error: String(error) });
+          }
+        };
+        if (!value) {
+          return {
+            kind: 'text',
+            text: `Chế độ chia tin của chat này: **${current}** (cấu hình chung: ${config.progressive}).\nDùng \`/split off\` để gộp trả lời vào một tin, \`/split on\` để tách sớm, \`/split auto\` để theo cấu hình.`,
+          };
+        }
+        if (['off', 'tat', 'tắt', 'gop', 'gộp'].includes(value)) {
+          ctx.record.meta.split = 'off';
+          persist();
+          return {
+            kind: 'text',
+            text: 'Đã tắt chia tin: bot sẽ gộp trả lời vào một tin. Tin quá dài (trên 1900 ký tự) vẫn phải chia vì giới hạn của Zalo.',
+          };
+        }
+        if (['on', 'bat', 'bật'].includes(value)) {
+          ctx.record.meta.split = 'on';
+          persist();
+          return { kind: 'text', text: 'Đã bật chia tin sớm: bot gửi phần đầu ngay khi có câu hoàn chỉnh để đỡ chờ.' };
+        }
+        if (['auto', 'default', 'reset'].includes(value)) {
+          ctx.record.meta.split = null;
+          persist();
+          return { kind: 'text', text: `Đã trở về chế độ chia tin theo cấu hình (${config.progressive}).` };
+        }
+        return { kind: 'text', text: 'Giá trị không hợp lệ. Dùng `/split off|on|auto`.' };
       }
 
       case 'tone': {

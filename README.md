@@ -11,10 +11,10 @@ Bot chat cho **một nhóm Zalo**, **NVIDIA NIM** (`nvidia/nemotron-3.5-super-vl
 - **Gửi ảnh** (`sendPhoto`) qua lệnh `/image` hoặc khi model tự gọi tool `send_image`.
 - **Gửi sticker** (`sendSticker`) qua `/sticker`, tool `send_sticker`, và tự trả lại sticker khi có người gửi sticker cho bot (cần sticker ID chính thức — xem bên dưới).
 - **Hiểu ảnh** người dùng gửi (DeepSeek Flash và Nemotron Super VL đều nhận ảnh).
-- **Emoji**, định dạng markdown Zalo, chia tin dài ≤ 2000 ký tự.
+- **Emoji**, định dạng markdown Zalo, chia tin dài ≤ 1900 ký tự (giới hạn an toàn của Zalo).
 - **Giảm độ trễ**: không giới hạn `max_tokens`, `reasoning_effort: none` mặc định (~0 token suy nghĩ), typing indicator, warm-up model, streaming + gửi tách đoạn khi trả lời chậm, cache search/ảnh, retry + circuit breaker.
-- **Trả lời đủ ý, không cụt**: mặc định 3–5 câu; câu hỏi cần giải thích/so sánh/hướng dẫn → 8–12 câu (~800–1500 ký tự) hoặc 4–6 gạch đầu dòng, có số liệu/ví dụ. Nhắc độ dài được chèn **ngay trong lượt gửi model** (system prompt một mình không đủ); yêu cầu ngắn của người dùng (`ngắn thôi`, `250 từ`) luôn thắng.
-- Lệnh: `/help`, `/reset`, `/status`, `/id`, `/search`, `/image`, `/sticker`, `/model`, `/think`, `/ping`.
+- **Trả lời đủ ý, không cụt**: không áp khung số câu cố định — độ dài theo nội dung câu hỏi; câu hỏi cần giải thích/so sánh/hướng dẫn thì kèm số liệu/ví dụ. Chỉ khi người dùng nêu rõ độ dài (`ngắn thôi`, `250 từ`, `3 dòng`) mới chèn gợi ý độ dài **ngay trong lượt gửi model**; yêu cầu ngắn của người dùng luôn thắng.
+- Lệnh: `/help`, `/reset`, `/status`, `/id`, `/search`, `/image`, `/sticker`, `/model`, `/think`, `/split`, `/ping`.
 
 ## Yêu cầu
 
@@ -149,6 +149,7 @@ Sau lần chạy đầu, log sẽ in `chatId` (hoặc gõ `/id` trong nhóm) —
 | `/model <alias>` | Đổi model cho chat: `deepseek`, `pro`, `nim`, `ultra`, `nim-light` |
 | `/tone [roast\|hard\|friendly\|default]` | Đổi giọng điệu cho chat này: `roast` (cà khịa), `hard` (chửi thẳng, nặng lời), `friendly`, `default` = theo `BOT_TONE` |
 | `/think on\|off\|low\|high\|auto` | Bật/tắt reasoning cho chat này |
+| `/split on\|off\|auto` | Tắt chia trả lời thành nhiều tin cho chat này (`off` = gộp một tin, `auto` = theo `PROGRESSIVE`) |
 | `/ping` | Đo round-trip Zalo API |
 
 ## Cấu hình
@@ -161,7 +162,7 @@ Toàn bộ biến môi trường có trong [`.env.example`](.env.example). Các 
 - **NIM (dự phòng)**: `NIM_API_KEY`, `NIM_BASE_URL`, `NIM_MODEL`, `NIM_ULTRA_MODEL` (`nvidia/nemotron-3-ultra-550b-a55b`), `NIM_FALLBACK_MODEL`, `NIM_TEMPERATURE`, `NIM_TIMEOUT_MS`.
 - **Context**: `CONTEXT_MAX_TOKENS` (**0 = không giới hạn**), `CONTEXT_MAX_MESSAGES` (**0 = không giới hạn**), `CONTEXT_MAX_CHARS_PER_MESSAGE` (mặc định 12000, **0 = không cắt**), `CONTEXT_MAX_IMAGES` (số ảnh gửi kèm dạng ảnh), `CONTEXT_TTL_HOURS` (**0 = không bao giờ tự xoá**), `CONTEXT_SUMMARY`, `DATA_DIR` (tương đối → tính từ gốc repo; trên panel nên dùng đường dẫn tuyệt đối tới volume persistent, không dùng `/tmp`).
 - **Tavily**: `SEARCH_ENABLED`, `SEARCH_AUTO` (**off = model không tự search, `/search` vẫn dùng được**), `SEARCH_DEPTH` (`fast|basic|advanced|ultra-fast`), `SEARCH_MAX_RESULTS`, `SEARCH_COUNTRY`, `SEARCH_CACHE_TTL_MS` (0 = tắt cache).
-- **Hành vi**: `BOT_TONE` (**mặc định `hard`** = chửi nặng; `extreme` = gắt nhất, bật bằng `/tone max`; `roast` = vừa; `friendly` = lịch sự), `EMOJI`, `TYPING`, `TYPING_INTERVAL_MS`, `PROGRESSIVE` (`auto` = chỉ tách khi chờ lâu, `on` = tách sớm, `off` = gộp), `PROGRESSIVE_AFTER_MS`, `MAX_MESSAGES_PER_REPLY` (**0 = gửi hết**), `MAX_QUEUE_DEPTH`, `ADMIN_IDS`, `STICKER_ENABLED`, `STICKER_ECHO`, `STICKER_IDS` (`id1,id2:tên hai`).
+- **Hành vi**: `BOT_TONE` (**mặc định `hard`** = chửi nặng; `extreme` = gắt nhất, bật bằng `/tone max`; `roast` = vừa; `friendly` = lịch sự), `EMOJI`, `TYPING`, `TYPING_INTERVAL_MS`, `PROGRESSIVE` (`auto` = chỉ tách khi chờ lâu, `on` = tách sớm, `off` = gộp), `PROGRESSIVE_AFTER_MS`, `MAX_MESSAGES_PER_REPLY` (**0 = gửi hết**), `MAX_QUEUE_DEPTH`, `USER_RATE_LIMIT_PER_MINUTE` (**mặc định 12, 0 = tắt** — chặn một người spam đốt credit API), `ADMIN_IDS`, `STICKER_ENABLED`, `STICKER_ECHO`, `STICKER_IDS` (`id1,id2:tên hai`).
 - **Log**: `LOG_FORMAT` (`pretty|json`), `LOG_COLOR` (`auto|always|never`), `LOG_LEVEL`.
 
 CLI flags: `--model <alias> --mode --think --max-tokens --progressive --no-progressive --no-search --no-emoji --no-typing --dry-run --once --verbose --help`.
@@ -184,7 +185,7 @@ Zalo API ──► polling/webhook ──► agent (queue theo chat, 4 chat song
 - **Ngữ cảnh**: mặc định **không cắt** (gửi toàn bộ lịch sử, không cắt ký tự từng tin). Nếu đặt `CONTEXT_MAX_TOKENS`/`CONTEXT_MAX_MESSAGES`/`CONTEXT_MAX_CHARS_PER_MESSAGE` > 0 thì mới cắt theo budget (ước lượng `chars/3.2` + hiệu chỉnh bằng `usage.prompt_tokens`) và tự tóm tắt khi bỏ ≥ 6 tin. System prompt giữ tĩnh (viết bằng **tiếng Anh** để model bám instruction tốt hơn, nhưng có luật bắt buộc trả lời tiếng Việt; các câu ví dụ giọng điệu vẫn để tiếng Việt vì đó là output mẫu); mốc thời gian chỉ được chèn vào cuối tin user khi tin nhắn có từ chỉ thời gian (hôm nay, mai, mấy giờ...) — bản gửi model, không lưu context — kèm luật cấm nhắc lại ngày giờ khi không được hỏi. Ảnh: tối đa `CONTEXT_MAX_IMAGES` ảnh gần nhất gửi dạng ảnh, ảnh cũ thành `[ảnh đã gửi]`.
 - **Typing indicator**: gửi `typing` ngay khi nhận tin, refresh mỗi `TYPING_INTERVAL_MS`, và **tắt trước khi gửi tin đầu tiên** (chờ request typing cuối kết thúc) để Zalo không còn hiện "đang soạn tin" sau khi bot đã nhắn.
 - **Progressive**: `auto` = chỉ tách đoạn khi chờ > `PROGRESSIVE_AFTER_MS` và có đoạn ≥ 160 ký tự; `on` = tách sớm ngay khi có câu ≥ 80 ký tự; `off` = gộp một lần.
-- **Chống lỗi**: không retry khi gửi tin (tránh gửi trùng), retry cho các call đọc (getMe/getUpdates/Tavily), circuit breaker riêng từng provider 5 lỗi/30s, dedupe `message_id`, queue có trần (`MAX_QUEUE_DEPTH`), graceful shutdown chờ flush context.
+- **Chống lỗi**: không retry khi gửi tin (tránh gửi trùng), retry cho các call đọc (getMe/getUpdates/Tavily), circuit breaker riêng từng provider 5 lỗi/30s, dedupe `message_id` (RAM + lưu trong context nên restart không trả lời trùng), queue có trần (`MAX_QUEUE_DEPTH`), graceful shutdown chờ tin đang xử lý xong rồi flush context.
 - **Webhook**: bind `WEBHOOK_HOST` (mặc định localhost, tunnel vẫn dùng được); secret lấy từ env hoặc sinh 1 lần lưu ở `data/webhook-secret` để restart không đổi; body JSON hỏng trả 400 để Zalo retry.
 
 ## Cấu trúc

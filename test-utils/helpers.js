@@ -69,6 +69,7 @@ export function makeConfig(overrides = {}) {
     progressiveAfterMs: 3000,
     maxMessagesPerReply: 3,
     maxQueueDepth: 50,
+    userRateLimitPerMinute: 0,
     logLevel: 'silent',
     dataDir: './data/test',
     opsPort: null,

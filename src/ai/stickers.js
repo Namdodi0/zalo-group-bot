@@ -108,7 +108,10 @@ export function createStickerStore(options = {}) {
       null,
       2,
     );
-    await fsp.writeFile(file, payload, 'utf8');
+    // Ghi atomic: crash giữa lúc ghi không được làm hỏng catalog.
+    const tmp = `${file}.${process.pid}.${Date.now()}.tmp`;
+    await fsp.writeFile(tmp, payload, 'utf8');
+    await fsp.rename(tmp, file);
   }
 
   /** @param {{id: string, name?: string, tags?: string[]}} input */

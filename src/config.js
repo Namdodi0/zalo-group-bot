@@ -406,6 +406,8 @@ export function loadConfig(input = {}) {
     // 0 = không giới hạn số tin cho 1 câu trả lời
     maxMessagesPerReply: /** @type {number} */ (readInt(env, 'MAX_MESSAGES_PER_REPLY', 0, { min: 0 })),
     maxQueueDepth: /** @type {number} */ (readInt(env, 'MAX_QUEUE_DEPTH', 50, { min: 1, max: 1000 })),
+    // 0 = tắt; mặc định chặn spam đốt credit API
+    userRateLimitPerMinute: /** @type {number} */ (readInt(env, 'USER_RATE_LIMIT_PER_MINUTE', 12, { min: 0 })),
     logLevel: cli.verbose ? 'debug' : readStr(env, 'LOG_LEVEL', 'info').toLowerCase(),
     logThinking: readBool(env, 'LOG_THINKING', true),
     logFormat: /** @type {'pretty'|'json'} */ (logFormat),
@@ -445,6 +447,8 @@ export function describeConfig(config) {
         ? `${config.context.maxTokens > 0 ? `${config.context.maxTokens} tok` : '∞ tok'} / ${config.context.maxMessages > 0 ? `${config.context.maxMessages} msg` : '∞ msg'}`
         : 'unlimited',
     replyChunks: config.maxMessagesPerReply > 0 ? `≤${config.maxMessagesPerReply}` : 'unlimited',
+    userRateLimit:
+      config.userRateLimitPerMinute > 0 ? `${config.userRateLimitPerMinute}/min/user` : 'off',
     allowedChats: config.allowedChatIds.length || 'all',
     admins: config.adminIds.length || 'everyone',
     token: maskSecret(config.zalo.token),

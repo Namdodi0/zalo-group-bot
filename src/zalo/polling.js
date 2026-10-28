@@ -21,7 +21,9 @@ export async function startPolling(options) {
 
   while (!signal?.aborted) {
     try {
-      const payload = await zalo.getUpdates(timeoutSec);
+      const payload = await zalo.getUpdates(timeoutSec, signal);
+      // Shutdown giữa lúc long-poll trả về: bỏ lượt này để drain() thấy queue ổn định.
+      if (signal?.aborted) break;
       backoffMs = 1000;
       const events = normalizeUpdates(payload);
       if (events.length) {

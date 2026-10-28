@@ -225,12 +225,21 @@ async function main() {
     shutdownPromise = (async () => {
       logger.info('shutting down', { reason, icon: '👋' });
       controller.abort();
+      // Đóng nguồn nhận tin (webhook/ops) trước, để queue không tăng thêm trong lúc chờ.
       for (const cleanup of cleanups.reverse()) {
         try {
           await cleanup();
         } catch (error) {
           logger.warn('cleanup failed', { error });
         }
+      }
+      // Chờ tin đang xử lý gửi xong trước khi đóng: nếu không, redeploy có thể
+      // cắt ngang câu trả lời và lưu context thiếu lượt assistant.
+      try {
+        const left = await agent.drain(10_000);
+        if (left > 0) logger.warn('shutdown: vẫn còn tin chưa xử lý xong', { pending: left, icon: '⏳' });
+      } catch (error) {
+        logger.warn('drain on shutdown failed', { error });
       }
       try {
         zalo.stopAllTyping();

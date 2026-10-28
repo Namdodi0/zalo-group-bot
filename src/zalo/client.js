@@ -87,8 +87,9 @@ export function createZaloClient(options) {
    * Long-poll. Zalo trả `{ok:false, error_code:408}` khi hết timeout mà không có tin mới —
    * đó là trạng thái bình thường, không phải lỗi.
    * @param {number} [timeoutSec]
+   * @param {AbortSignal} [signal] huỷ khi shutdown để không nhận thêm tin mới
    */
-  async function getUpdates(timeoutSec = 30) {
+  async function getUpdates(timeoutSec = 30, signal) {
     const url = `${baseUrl}/bot${token}/getUpdates`;
     const response = await http.requestJson(url, {
       service: 'zalo',
@@ -98,6 +99,7 @@ export function createZaloClient(options) {
       body: JSON.stringify({ timeout: String(timeoutSec) }),
       timeoutMs: (timeoutSec + 10) * 1000,
       retries: 1,
+      signal,
     });
     const data = /** @type {any} */ (response.data);
     if (data?.ok === true) return data;

@@ -193,6 +193,33 @@ test('/think đổi chế độ reasoning', async () => {
   assert.match(result.text, /off/);
 });
 
+test('/split off tắt chia tin cho chat, /split auto trả về cấu hình', async () => {
+  const d = deps();
+  const commands = createCommands(d);
+  const context = ctx(d);
+
+  const off = await commands.run({ name: 'split', args: 'off' }, context);
+  assert.match(off.text, /Đã tắt chia tin/);
+  assert.equal(context.record.meta.split, 'off');
+
+  const shown = await commands.run({ name: 'split', args: '' }, context);
+  assert.match(shown.text, /off/);
+
+  const back = await commands.run({ name: 'split', args: 'auto' }, context);
+  assert.match(back.text, /theo cấu hình/);
+  assert.equal(context.record.meta.split, null);
+
+  const bad = await commands.run({ name: 'split', args: 'xyz' }, context);
+  assert.match(bad.text, /không hợp lệ/);
+});
+
+test('/split bị chặn nếu không phải admin', async () => {
+  const d = deps({ config: { adminIds: ['admin-1'] } });
+  const commands = createCommands(d);
+  const result = await commands.run({ name: 'split', args: 'off' }, ctx(d));
+  assert.match(result.text, /Chỉ admin/);
+});
+
 test('lệnh lạ trả hướng dẫn', async () => {
   const d = deps();
   const commands = createCommands(d);

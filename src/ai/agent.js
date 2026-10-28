@@ -133,8 +133,12 @@ export function createAgent(deps) {
 
   /** @type {Map<string, number>} */
   const seen = new Map();
+  /** @type {Map<string, number[]>} */
+  const userHits = new Map();
   /** @type {Map<string, Promise<void>>} */
   const chatQueues = new Map();
+  /** @type {Array<{resolve: () => void, timer: NodeJS.Timeout}>} */
+  const drainWaiters = [];
 
   let active = 0;
   let queueDepth = 0;
@@ -164,6 +168,31 @@ export function createAgent(deps) {
     if (seen.size > 2000) {
       const oldest = seen.keys().next().value;
       if (oldest !== undefined) seen.delete(oldest);
+    }
+    return false;
+  }
+
+  const RATE_WINDOW_MS = 60_000;
+
+  /**
+   * Giới hạn số tin một người gửi trong 1 phút — chặn spam đốt credit API.
+   * Bỏ qua im lặng (không trả lời) để không tiếp tay cho spam.
+   * @param {string} senderId
+   */
+  function rateLimited(senderId) {
+    const limit = config.userRateLimitPerMinute ?? 0;
+    if (!limit || !senderId) return false;
+    const now = Date.now();
+    const hits = (userHits.get(senderId) ?? []).filter((ts) => now - ts < RATE_WINDOW_MS);
+    if (hits.length >= limit) {
+      userHits.set(senderId, hits);
+      return true;
+    }
+    hits.push(now);
+    userHits.set(senderId, hits);
+    if (userHits.size > 500) {
+      const oldest = userHits.keys().next().value;
+      if (oldest !== undefined) userHits.delete(oldest);
     }
     return false;
   }
@@ -318,10 +347,17 @@ export function createAgent(deps) {
     const reasoning = effectiveReasoning(record, effectiveText);
     const target = llm.resolve(record);
     const toolDefs = tools.definitions();
-    const streaming = config.progressive !== 'off';
+    // `/split` đặt riêng cho chat này, ưu tiên hơn PROGRESSIVE trong cấu hình.
+    const splitMode = ['auto', 'on', 'off'].includes(record?.meta?.split)
+      ? record.meta.split
+      : config.progressive;
+    const streaming = splitMode !== 'off';
     // `on` = gửi tách đoạn sớm (khi có câu hoàn chỉnh); `auto` = chỉ khi chờ lâu.
-    const flushAfterMs = config.progressive === 'on' ? 0 : config.progressiveAfterMs;
-    const minHeadChars = config.progressive === 'on' ? 80 : 160;
+    const flushAfterMs = splitMode === 'on' ? 0 : config.progressiveAfterMs;
+    const minHeadChars = splitMode === 'on' ? 80 : 160;
+    // Giới hạn đúng 1 tin thì không tách sớm: gửi phần đầu sẽ chiếm hết slot và
+    // phần còn lại bị bỏ mà không có dấu hiệu gì.
+    const flushAllowed = config.maxMessagesPerReply !== 1;
 
     // Lưu lượt của user NGAY (trước khi gọi model) để không mất câu hỏi nếu crash/timeout.
     record.messages.push(userTurn);
@@ -368,7 +404,7 @@ export function createAgent(deps) {
     const messages = [...built.messages];
     // Nhắc độ dài trong chính lượt này: system prompt một mình không đủ, model rất
     // hay trả lời 1 câu dù prompt đã dặn "đủ ý".
-    injectTimeContext(messages, new Date(), [buildLengthHint(effectiveText, { tone })], {
+    injectTimeContext(messages, new Date(), [buildLengthHint(effectiveText)], {
       includeTime: needsTimeContext(effectiveText),
     });
 
@@ -399,9 +435,12 @@ export function createAgent(deps) {
     let streamBuffer = '';
     let emitted = 0;
     let flushed = false;
+    // Sau một vòng có tool call, nội dung vòng sau là câu trả lời mới hoàn chỉnh —
+    // không tách sớm nữa để tránh gửi thiếu/trùng đoạn.
+    let flushLocked = false;
 
     const onDelta = (delta) => {
-      if (!streaming || flushed) return;
+      if (!streaming || flushed || flushLocked || !flushAllowed) return;
       streamBuffer += delta;
       const elapsed = Date.now() - startedAt;
       if (elapsed < flushAfterMs) return;
@@ -525,6 +564,12 @@ export function createAgent(deps) {
 
       completionMs += Number(response.completionMs ?? response.latencyMs ?? 0) || 0;
       completionTokens += Number(response.completionTokens ?? response.usage?.completion_tokens ?? 0) || 0;
+      // Vòng đầu khớp với `built.estimatedTokens`; các vòng sau có thêm message tool
+      // nên không dùng để hiệu chỉnh (sẽ làm lệch tỉ lệ).
+      if (round === 0) {
+        const promptTokens = Number(response.usage?.prompt_tokens ?? 0);
+        if (promptTokens > 0) calibrator.observe(built.estimatedTokens, promptTokens);
+      }
       if (typeof response.reasoning === 'string' && response.reasoning.trim()) {
         thinkingText += `${thinkingText ? '\n\n' : ''}${response.reasoning.trim()}`;
       }
@@ -552,6 +597,11 @@ export function createAgent(deps) {
             content: truncate(result.text, 4000),
           });
         }
+        // Đã lỡ gửi phần đầu của vòng này: gửi trọn nội dung vòng cuối thay vì
+        // cắt theo `emitted` của vòng trước (có thể dài hơn câu trả lời cuối).
+        streamBuffer = '';
+        emitted = 0;
+        flushLocked = true;
         continue;
       }
 
@@ -642,6 +692,30 @@ export function createAgent(deps) {
 
     try {
       const record = await store.get(event.chatId, { chatType: event.chatType });
+
+      // Dedupe bền: `seen` trong RAM mất khi restart, record thì không.
+      // (Hai process cùng chạy chia sẻ file vẫn có thể đua — chạy 1 instance.)
+      if (event.messageId) {
+        const history = Array.isArray(record.seen) ? record.seen : [];
+        if (history.includes(event.messageId)) {
+          metrics.inc('messages.duplicate');
+          logger.debug('duplicate message skipped (context)', { messageId: event.messageId, icon: '♻️' });
+          return;
+        }
+        record.seen = [...history, event.messageId].slice(-200);
+        store.touch(event.chatId);
+      }
+
+      if (rateLimited(event.senderId)) {
+        metrics.inc('messages.rateLimited');
+        logger.warn('sender rate limited, ignoring', {
+          chatId: event.chatId,
+          senderId: event.senderId,
+          perMinute: config.userRateLimitPerMinute,
+          icon: '🚦',
+        });
+        return;
+      }
 
       if (event.kind === 'voice') {
         const sender = makeSender(event.chatId, stopTyping);
@@ -780,14 +854,19 @@ export function createAgent(deps) {
     }
 
     queueDepth += 1;
+    let acquired = false;
     const previous = chatQueues.get(chatId) ?? Promise.resolve();
     const task = previous
       .then(() => acquire())
-      .then(() => handle(event))
+      .then(() => {
+        acquired = true;
+        return handle(event);
+      })
       .catch((error) => logger.error('queued handler crashed', { error }))
       .finally(() => {
         queueDepth = Math.max(0, queueDepth - 1);
-        release();
+        if (acquired) release();
+        notifyDrainWaiters();
       });
 
     chatQueues.set(chatId, task);
@@ -801,7 +880,38 @@ export function createAgent(deps) {
     return queueDepth;
   }
 
-  return { handle, enqueue, pending, seenSize: () => seen.size };
+  function notifyDrainWaiters() {
+    if (queueDepth > 0) return;
+    for (const waiter of drainWaiters.splice(0)) {
+      clearTimeout(waiter.timer);
+      waiter.resolve();
+    }
+  }
+
+  /**
+   * Chờ các tin đang xử lý chạy xong (dùng khi shutdown).
+   * @param {number} [timeoutMs]
+   * @returns {Promise<number>} số tin còn lại khi hết giờ (0 = đã sạch)
+   */
+  async function drain(timeoutMs = 10_000) {
+    if (queueDepth === 0) return 0;
+    await new Promise((resolve) => {
+      /** @type {{resolve: () => void, timer: NodeJS.Timeout}} */
+      const waiter = {
+        resolve,
+        timer: setTimeout(() => {
+          const index = drainWaiters.indexOf(waiter);
+          if (index >= 0) drainWaiters.splice(index, 1);
+          resolve();
+        }, timeoutMs),
+      };
+      waiter.timer.unref?.();
+      drainWaiters.push(waiter);
+    });
+    return queueDepth;
+  }
+
+  return { handle, enqueue, pending, drain, seenSize: () => seen.size };
 }
 
 export const __test__ = { findBreak, clamp, injectTimeContext, needsTimeContext };

@@ -100,6 +100,20 @@ test('store reset mặc định (không keepMeta) xoá sạch file', async () =>
   await assert.rejects(() => fsp.stat(store.fileFor('chat-3')));
 });
 
+test('prune bỏ cả record cũ trong RAM, không chỉ file', async () => {
+  const dir = await fsp.mkdtemp(path.join(os.tmpdir(), 'zalo-store-'));
+  const store = createContextStore({ dir, logger: silentLogger, ttlHours: 1, debounceMs: 2 });
+  await store.init();
+
+  const record = await store.get('stale-chat');
+  record.updatedAt = Date.now() - 2 * 3_600_000;
+  await store.flush();
+  assert.equal(store.has('stale-chat'), true);
+
+  await store.prune();
+  assert.equal(store.has('stale-chat'), false, 'record quá TTL phải bị bỏ khỏi RAM');
+});
+
 test('CONTEXT_TTL_HOURS=0: prune không xoá context nào', async () => {
   const dir = await fsp.mkdtemp(path.join(os.tmpdir(), 'zalo-store-'));
   const store = createContextStore({ dir, logger: silentLogger, ttlHours: 0, debounceMs: 2 });
