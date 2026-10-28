@@ -1,21 +1,23 @@
-import { buildMessages } from '../context/builder.js';
-import { createCalibrator } from '../context/tokens.js';
+import { assembleRequest } from '../context/assembler.js';
+import {
+  searchEntry,
+  syncContexts,
+  toolCallEntry,
+  toolResultEntry,
+  turnEntry,
+} from '../context/record.js';
+import { createTokenMeter } from '../context/token-meter.js';
 import { CircuitOpenError, HttpError } from '../http.js';
 import {
   chunkText,
-  formatNow,
   normalizeWhitespace,
   prepareOutgoing,
   stripMention,
   truncate,
 } from '../text/format.js';
-import {
-  SUMMARY_SYSTEM_PROMPT,
-  buildLengthHint,
-  buildSearchContext,
-  buildSummaryInput,
-  buildSystemPrompt,
-} from './prompt.js';
+import { LLM_ERROR, isRetryableLlmError } from './llm/errors.js';
+import { createRetryExecutor } from './llm/retry.js';
+import { buildSearchContext, createZaloPrompt } from './prompt/index.js';
 
 const MAX_CONCURRENT_CHATS = 4;
 const MAX_TOOL_ROUNDS = 3;
@@ -23,9 +25,6 @@ const CHUNK_LIMIT = 1900;
 
 /** @param {number} ms */
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-
-/** @param {number} value @param {number} min @param {number} max */
-const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
 
 /**
  * Rút gọn text cho log console: bỏ xuống dòng, cắt bớt cho dễ đọc.
@@ -38,65 +37,6 @@ function preview(text, limit = 900) {
     .trim();
   if (value.length <= limit) return value;
   return `${value.slice(0, limit - 1).trimEnd()}…`;
-}
-
-/**
- * Lỗi NIM có nên thử lại không (timeout, 429, 5xx).
- * @param {unknown} error
- */
-function isRetryableNimError(error) {
-  if (!(error instanceof HttpError)) return false;
-  if (error.status === 0) return true;
-  return error.status === 408 || error.status === 429 || error.status >= 500;
-}
-
-/**
- * Tin nhắn có nhắc mốc thời gian tương đối mới cần biết "hôm nay là ngày nào".
- * Câu hỏi thường không chèn giờ để model không nhắc lại ngày giờ vô cớ.
- */
-const TIME_HINT_RE =
-  /(?:^|[\s,.;:!?()"'“”])(?:hôm nay|hôm qua|hôm kia|hôm trước|hôm bữa|hôm nào|ngày mai|ngày mốt|sáng mai|chiều mai|tối mai|sáng nay|trưa nay|chiều nay|tối nay|đêm nay|tuần này|tuần sau|tuần trước|tuần tới|tuần rồi|tháng này|tháng sau|tháng trước|tháng tới|tháng rồi|năm nay|năm sau|năm trước|năm rồi|cuối tuần|đầu tuần|cuối tháng|đầu tháng|bây giờ|hiện tại|lúc này|mấy giờ|giờ nào|giờ rồi|thứ mấy|ngày mấy|tháng mấy|bao giờ|khi nào|bao lâu|deadline|hạn chót|hạn nộp|mai|mốt|noel|giáng sinh|tết|sinh nhật)(?=$|[\s,.;:!?()"'“”])/i;
-
-/** @param {string} text */
-function needsTimeContext(text) {
-  return TIME_HINT_RE.test(String(text ?? ''));
-}
-
-/**
- * Chèn mốc thời gian vào cuối tin nhắn user (bản copy gửi model, không lưu vào context).
- * Giữ system prompt tĩnh để prefix không đổi giữa các lượt.
- * @param {any[]} messages
- * @param {Date} [date]
- * @param {string[]} [notes] ghi chú thêm cho lượt này (vd nhắc độ dài)
- * @param {{includeTime?: boolean}} [options] `includeTime: false` → chỉ chèn notes
- */
-function injectTimeContext(messages, date = new Date(), notes = [], options = {}) {
-  /** @type {string[]} */
-  const lines = [];
-  if (options.includeTime !== false) {
-    lines.push(
-      `[Thời gian hiện tại: ${formatNow(date)} — chỉ dùng để quy đổi mốc thời gian tương đối, không nhắc lại ngày giờ trừ khi người dùng hỏi]`,
-    );
-  }
-  for (const note of notes) {
-    const clean = String(note ?? '').trim();
-    if (clean) lines.push(`[${clean}]`);
-  }
-  if (!lines.length) return messages;
-  const stamp = `\n\n${lines.join('\n')}`;
-  for (let index = messages.length - 1; index >= 0; index -= 1) {
-    const message = messages[index];
-    if (message?.role !== 'user') continue;
-    if (typeof message.content === 'string') {
-      message.content = `${message.content}${stamp}`;
-    } else if (Array.isArray(message.content)) {
-      const textPart = message.content.find((part) => part?.type === 'text');
-      if (textPart) textPart.text = `${textPart.text ?? ''}${stamp}`;
-      else message.content.push({ type: 'text', text: stamp.trim() });
-    }
-    return messages;
-  }
-  return messages;
 }
 
 /**
@@ -125,11 +65,12 @@ function findBreak(buffer) {
 }
 
 /**
- * @param {{config: any, logger: import('../logger.js').Logger, metrics: any, zalo: ReturnType<typeof import('../zalo/client.js').createZaloClient>, llm: ReturnType<typeof import('./router.js').createModelRouter>, store: ReturnType<typeof import('../context/store.js').createContextStore>, tools: ReturnType<typeof import('./tools.js').createToolRuntime>, commands: ReturnType<typeof import('../commands/index.js').createCommands>, stickers?: ReturnType<typeof import('./stickers.js').createStickerStore>, http?: ReturnType<typeof import('../http.js').createHttp>}} deps
+ * @param {{config: any, logger: import('../logger.js').Logger, metrics: any, zalo: ReturnType<typeof import('../zalo/client.js').createZaloClient>, llm: ReturnType<typeof import('./router.js').createModelRouter>, store: ReturnType<typeof import('../context/store.js').createContextStore>, tools: ReturnType<typeof import('./tools.js').createToolRuntime>, commands: ReturnType<typeof import('../commands/index.js').createCommands>, stickers?: ReturnType<typeof import('./stickers.js').createStickerStore>, http?: ReturnType<typeof import('../http.js').createHttp>, compaction: ReturnType<typeof import('../context/compaction/engine.js').createCompactionEngine>}} deps
  */
 export function createAgent(deps) {
-  const { config, logger, metrics, zalo, llm, store, tools, commands, stickers } = deps;
-  const calibrator = createCalibrator();
+  const { config, logger, metrics, zalo, llm, store, tools, commands, stickers, compaction } = deps;
+  const meter = createTokenMeter();
+  const retryExecutor = createRetryExecutor({ shouldRetry: isRetryableLlmError, sleep });
 
   /** @type {Map<string, number>} */
   const seen = new Map();
@@ -268,28 +209,6 @@ export function createAgent(deps) {
   }
 
   /**
-   * @param {import('../context/store.js').StoredMessage[]} messages
-   * @param {number} deadline
-   */
-  async function summarize(messages, deadline, record) {
-    if (!messages.length) return '';
-    const timeout = clamp(deadline - Date.now(), 3000, 15_000);
-    const response = await llm.chat({
-      record,
-      messages: [
-        { role: 'system', content: SUMMARY_SYSTEM_PROMPT },
-        { role: 'user', content: buildSummaryInput(messages) },
-      ],
-      reasoning: 'none',
-      temperature: 0.3,
-      maxTokens: 200,
-      timeoutMs: timeout,
-      signal: AbortSignal.timeout(timeout),
-    });
-    return truncate((response.content ?? '').trim(), 900);
-  }
-
-  /**
    * @param {any} record
    * @param {string} text
    */
@@ -315,38 +234,42 @@ export function createAgent(deps) {
     const sender = makeSender(event.chatId, stopTyping);
 
     const rawText = normalizeWhitespace(event.text ?? '');
-    const effectiveText = rawText || (event.imageUrl ? 'Hãy mô tả ảnh này.' : '');
+    // Model là text-only: ảnh chỉ được ghi chú, không gửi nội dung ảnh lên API.
+    const imageNote = 'người dùng gửi kèm ảnh — bot không xem được nội dung';
+    const effectiveText =
+      rawText || (event.imageUrl ? 'Người dùng đã gửi một ảnh — bot không xem được nội dung.' : '');
     if (!effectiveText) return;
 
+    const textWithImage =
+      rawText && event.imageUrl ? `${rawText}\n[${imageNote}]` : effectiveText;
     const storedText =
-      event.chatType === 'GROUP' && effectiveText
-        ? `${event.senderName}: ${effectiveText}`
-        : effectiveText;
+      event.chatType === 'GROUP' && textWithImage
+        ? `${event.senderName}: ${textWithImage}`
+        : textWithImage;
 
-    /** @type {import('../context/store.js').StoredMessage} */
-    const userTurn = {
-      role: 'user',
+    const userTurn = turnEntry({
       text: storedText,
       name: event.senderName,
-      imageUrl: event.imageUrl ?? null,
       ts: Date.now(),
       messageId: event.messageId,
-    };
+    });
 
     const tone = record?.meta?.tone ?? config.tone;
-    const systemPrompt = buildSystemPrompt({
+    const toolDefs = tools.definitions();
+    const promptRegistry = createZaloPrompt({
       botName: zalo.displayName || 'trợ lý AI',
       chatType: event.chatType,
       emoji: config.emoji,
-      searchEnabled: config.search.enabled,
+      // Tool guidance chỉ hiện khi schema tương ứng thật sự được gửi lên model.
+      tools: toolDefs,
       imageEnabled: config.image.enabled,
-      stickerEnabled: config.sticker.enabled,
       tone,
     });
+    const promptAssembly = promptRegistry.assemble({ text: effectiveText, now: new Date() });
+    const systemPrompt = promptRegistry.render(promptAssembly);
 
     const reasoning = effectiveReasoning(record, effectiveText);
     const target = llm.resolve(record);
-    const toolDefs = tools.definitions();
     // `/split` đặt riêng cho chat này, ưu tiên hơn PROGRESSIVE trong cấu hình.
     const splitMode = ['auto', 'on', 'off'].includes(record?.meta?.split)
       ? record.meta.split
@@ -362,60 +285,62 @@ export function createAgent(deps) {
     // Lưu lượt của user NGAY (trước khi gọi model) để không mất câu hỏi nếu crash/timeout.
     record.messages.push(userTurn);
     record.turns = (record.turns ?? 0) + 1;
-    store.touch(event.chatId);
 
-    const buildAll = () =>
-      buildMessages({
-        systemPrompt,
-        record,
-        maxTokens: config.context.maxTokens,
-        maxMessages: config.context.maxMessages,
-        maxCharsPerMessage: config.context.maxCharsPerMessage,
-        maxImages: config.context.maxImages,
-        calibrator,
-      });
-
-    let built = buildAll();
-
-    if (built.needsSummary && config.context.summary) {
-      const keep = 8;
-      const older = record.messages.slice(0, Math.max(0, record.messages.length - keep));
-      if (older.length) {
-        try {
-          const summary = await summarize(older, deadline, record);
-          if (summary) {
-            record.summary = truncate(
-              normalizeWhitespace(`${record.summary ? `${record.summary} ` : ''}${summary}`),
-              1200,
-            );
-            record.messages = record.messages.slice(-keep);
-            built = buildAll();
-            metrics.inc('context.summarized');
-          }
-        } catch (error) {
-          logger.warn('summarize failed, fallback to trimming', {
-            error: String(/** @type {any} */ (error)?.message ?? error),
-          });
-        }
-      }
-    }
-
-    /** @type {any[]} */
-    const messages = [...built.messages];
-    // Nhắc độ dài trong chính lượt này: system prompt một mình không đủ, model rất
-    // hay trả lời 1 câu dù prompt đã dặn "đủ ý".
-    injectTimeContext(messages, new Date(), [buildLengthHint(effectiveText)], {
-      includeTime: needsTimeContext(effectiveText),
-    });
-
+    // /search: kết quả là context bền vững, chèn ngay trước lượt user hiện tại.
     if (options.forceSearch) {
       const search = await tools.run(
         'web_search',
         { query: options.forceSearch },
         { chatId: event.chatId, deadline },
       );
-      messages.push({ role: 'system', content: buildSearchContext(options.forceSearch, search.text) });
+      record.messages.splice(
+        record.messages.length - 1,
+        0,
+        searchEntry(buildSearchContext(options.forceSearch, search.text)),
+      );
     }
+
+    // Context runtime (thời gian...) do prompt registry cung cấp, materialize
+    // thành message user bền vững — refresh mỗi lượt, không mutate lượt user.
+    syncContexts(record, promptAssembly.contexts);
+    store.touch(event.chatId);
+
+    const buildAll = () =>
+      assembleRequest({
+        systemPrompt,
+        tools: toolDefs,
+        record,
+        maxTokens: config.context.maxTokens,
+        maxMessages: config.context.maxMessages,
+        maxCharsPerMessage: config.context.maxCharsPerMessage,
+        contextWindow: target.contextWindow ?? config.context.modelWindow ?? 0,
+        meter,
+      });
+
+    let built = buildAll();
+
+    try {
+      const measure = () => {
+        const current = buildAll();
+        return { pressure: current.pressure, tokens: current.estimatedTokens };
+      };
+      const result = await compaction.compactIfNeeded({
+        record,
+        trigger: built.needsSummary ? 'dropped' : 'pressure',
+        deadline,
+        measure,
+      });
+      if (result?.changed) {
+        built = buildAll();
+        metrics.inc('context.summarized');
+      }
+    } catch (error) {
+      logger.warn('compaction failed, fallback to trimming', {
+        error: String(/** @type {any} */ (error)?.message ?? error),
+      });
+    }
+
+    const messages = built.messages;
 
     // Bằng chứng context có được gửi lên API: bật LOG_LEVEL=debug sẽ thấy số message
     // (đã gồm lịch sử) và số ký tự của cả payload ở mỗi lượt.
@@ -425,6 +350,8 @@ export function createAgent(deps) {
       kept: built.keptMessages,
       dropped: built.dropped,
       estTokens: built.estimatedTokens,
+      pressure: built.pressure,
+      contextWindow: built.contextWindow,
       chars: messages.reduce(
         (sum, message) =>
           sum + (typeof message.content === 'string' ? message.content.length : JSON.stringify(message.content).length),
@@ -467,6 +394,7 @@ export function createAgent(deps) {
     let llmMs = 0;
     let completionMs = 0;
     let completionTokens = 0;
+    let overflowRecovered = false;
 
     for (let round = 0; round < MAX_TOOL_ROUNDS; round += 1) {
       const remaining = deadline - Date.now();
@@ -480,16 +408,14 @@ export function createAgent(deps) {
       /** @type {unknown} */
       let lastError = null;
 
-      // 2 lần thử: mỗi lần chỉ dùng nửa ngân sách còn lại để còn cửa retry (NIM hay chập chờn).
-      for (let attempt = 0; attempt < 2 && !response; attempt += 1) {
+      const callOnce = async () => {
         const left = deadline - Date.now();
-        if (left < 1500) break;
-        // TTFT tối đa ~9s: nếu NIM treo thì bỏ và retry sớm thay vì chờ hết ngân sách.
+        // TTFT tối đa ~9s: nếu provider treo thì bỏ và retry sớm thay vì chờ hết ngân sách.
         const attemptTimeout = Math.max(4000, Math.min(config.ai.timeoutMs, Math.floor(left / 2), 9000));
         // Đo cả lần gọi thất bại: llmMs là tổng thời gian thực sự tiêu vào LLM.
         const callStarted = Date.now();
         try {
-          response = await llm.chat({
+          return await llm.chat({
             record,
             messages,
             tools: toolDefs.length ? toolDefs : undefined,
@@ -502,21 +428,59 @@ export function createAgent(deps) {
             timeoutMs: streaming ? left : Math.max(4000, Math.min(config.ai.timeoutMs, left)),
             signal: AbortSignal.timeout(left),
           });
+        } finally {
           llmMs += Date.now() - callStarted;
-        } catch (error) {
-          llmMs += Date.now() - callStarted;
-          lastError = error;
-          if (!isRetryableNimError(error) || attempt === 1) break;
-          metrics.inc('llm.retries');
-          logger.warn('nim call failed, retrying', {
-            attempt: attempt + 1,
-            provider: target.provider,
-            model: target.model,
-            status: /** @type {any} */ (error)?.status,
-            error: String(/** @type {any} */ (error)?.message ?? error),
-            icon: '🔁',
-          });
-          await sleep(400 * (attempt + 1));
+        }
+      };
+
+      try {
+        response = await retryExecutor.execute(callOnce, {
+          deadline,
+          onRetry: (error, nextAttempt) => {
+            metrics.inc('llm.retries');
+            logger.warn('llm call failed, retrying', {
+              attempt: nextAttempt,
+              provider: target.provider,
+              model: target.model,
+              status: /** @type {any} */ (error)?.status,
+              error: String(/** @type {any} */ (error)?.message ?? error),
+              icon: '🔁',
+            });
+          },
+        });
+      } catch (error) {
+        lastError = error;
+
+        // Provider xác nhận tràn context: nén rồi thử lại đúng lượt này.
+        if (/** @type {any} */ (error)?.code === LLM_ERROR.CONTEXT_WINDOW_EXCEEDED && !overflowRecovered) {
+          overflowRecovered = true;
+          try {
+            const result = await compaction.compactIfNeeded({
+              record,
+              trigger: 'overflow',
+              deadline,
+              measure: () => {
+                const current = buildAll();
+                return { pressure: current.pressure, tokens: current.estimatedTokens };
+              },
+            });
+            if (result?.changed) {
+              built = buildAll();
+              messages.splice(0, messages.length, ...built.messages);
+              metrics.inc('llm.contextOverflow');
+              logger.warn('context overflow: đã nén và thử lại', {
+                chatId: event.chatId,
+                tokensBefore: result.tokensBefore,
+                tokensAfter: result.tokensAfter,
+                icon: '📉',
+              });
+              response = await callOnce();
+            }
+          } catch (recoveryError) {
+            logger.warn('overflow recovery failed', {
+              error: String(/** @type {any} */ (recoveryError)?.message ?? recoveryError),
+            });
+          }
         }
       }
 
@@ -559,7 +523,7 @@ export function createAgent(deps) {
           aborted = true;
           break;
         }
-        throw lastError ?? new Error('NIM không phản hồi');
+        throw lastError ?? new Error('Model không phản hồi');
       }
 
       completionMs += Number(response.completionMs ?? response.latencyMs ?? 0) || 0;
@@ -568,7 +532,7 @@ export function createAgent(deps) {
       // nên không dùng để hiệu chỉnh (sẽ làm lệch tỉ lệ).
       if (round === 0) {
         const promptTokens = Number(response.usage?.prompt_tokens ?? 0);
-        if (promptTokens > 0) calibrator.observe(built.estimatedTokens, promptTokens);
+        if (promptTokens > 0) meter.observe(built.estimatedTokens, promptTokens);
       }
       if (typeof response.reasoning === 'string' && response.reasoning.trim()) {
         thinkingText += `${thinkingText ? '\n\n' : ''}${response.reasoning.trim()}`;
@@ -586,17 +550,23 @@ export function createAgent(deps) {
             function: { name: call.name, arguments: call.rawArguments || JSON.stringify(call.arguments) },
           })),
         });
+        record.messages.push(
+          toolCallEntry({ content: response.content ?? '', toolCalls: response.toolCalls, ts: Date.now() }),
+        );
 
         for (const call of response.toolCalls) {
           const started = Date.now();
           const result = await tools.run(call.name, call.arguments, { chatId: event.chatId, deadline });
           metrics.observe(`tool.${call.name}`, Date.now() - started);
+          const text = truncate(result.text, 4000);
           messages.push({
             role: 'tool',
             tool_call_id: call.id,
-            content: truncate(result.text, 4000),
+            content: text,
           });
+          record.messages.push(toolResultEntry({ toolCallId: call.id, text, ts: Date.now() }));
         }
+        store.touch(event.chatId);
         // Đã lỡ gửi phần đầu của vòng này: gửi trọn nội dung vòng cuối thay vì
         // cắt theo `emitted` của vòng trước (có thể dài hơn câu trả lời cuối).
         streamBuffer = '';
@@ -619,12 +589,13 @@ export function createAgent(deps) {
       await sendText(sender, 'Mình chưa có câu trả lời cho câu này, bạn thử hỏi lại rõ hơn nhé.');
     }
 
-    record.messages.push({
-      role: 'assistant',
-      text: truncate(normalizeWhitespace(finalText), 4000),
-      ts: Date.now(),
-      imageUrl: null,
-    });
+    record.messages.push(
+      turnEntry({
+        role: 'assistant',
+        text: truncate(normalizeWhitespace(finalText), 4000),
+        ts: Date.now(),
+      }),
+    );
     store.touch(event.chatId);
 
     const duration = Date.now() - startedAt;
@@ -895,23 +866,27 @@ export function createAgent(deps) {
    */
   async function drain(timeoutMs = 10_000) {
     if (queueDepth === 0) return 0;
-    await new Promise((resolve) => {
+    /** @type {Promise<void>} */
+    const drained = new Promise((resolve) => {
+      /** @type {() => void} */
+      const done = () => resolve();
       /** @type {{resolve: () => void, timer: NodeJS.Timeout}} */
       const waiter = {
-        resolve,
+        resolve: done,
         timer: setTimeout(() => {
           const index = drainWaiters.indexOf(waiter);
           if (index >= 0) drainWaiters.splice(index, 1);
-          resolve();
+          done();
         }, timeoutMs),
       };
       waiter.timer.unref?.();
       drainWaiters.push(waiter);
     });
+    await drained;
     return queueDepth;
   }
 
   return { handle, enqueue, pending, drain, seenSize: () => seen.size };
 }
 
-export const __test__ = { findBreak, clamp, injectTimeContext, needsTimeContext };
+export const __test__ = { findBreak };

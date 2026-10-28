@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import fsp from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
+import { latestSummary, summaryEntry } from '../src/context/record.js';
 import { createContextStore } from '../src/context/store.js';
 import { silentLogger } from '../test-utils/helpers.js';
 
@@ -71,9 +72,9 @@ test('store reset keepMeta giữ meta, xoá messages/summary', async () => {  co
   await store.init();
 
   const record = await store.get('chat-2', { chatType: 'GROUP' });
+  record.messages.push(summaryEntry('tóm tắt cũ'));
   record.messages.push({ role: 'user', text: 'chửi nhau', ts: Date.now() });
   record.turns = 3;
-  record.summary = 'tóm tắt cũ';
   record.meta = { thinking: 'low', model: 'nim', tone: 'roast-hard' };
   await store.flush();
 
@@ -84,7 +85,7 @@ test('store reset keepMeta giữ meta, xoá messages/summary', async () => {  co
   const loaded = await store2.get('chat-2');
   assert.equal(loaded.messages.length, 0);
   assert.equal(loaded.turns, 0);
-  assert.equal(loaded.summary, '');
+  assert.equal(latestSummary(loaded), '');
   assert.deepEqual(loaded.meta, { thinking: 'low', model: 'nim', tone: 'roast-hard' });
 });
 

@@ -73,7 +73,7 @@ function ctx(d, overrides = {}) {
     chatType: 'GROUP',
     senderId: 'u1',
     senderName: 'Nam',
-    record: { messages: [], turns: 3, summary: '', meta: { thinking: null } },
+    record: { messages: [], turns: 3, meta: { thinking: null } },
     ...overrides,
   };
 }
@@ -85,6 +85,27 @@ test('/help trả danh sách lệnh', async () => {
   assert.equal(result.kind, 'text');
   assert.match(result.text, /\/status/);
   assert.match(result.text, /@mention/);
+});
+
+test('/compact chạy compaction và báo kết quả', async () => {
+  const d = deps();
+  d.compaction = {
+    async compactIfNeeded() {
+      return { changed: true, summarized: true, pruned: true };
+    },
+  };
+  const commands = createCommands(d);
+  const result = await commands.run({ name: 'compact', args: '' }, ctx(d));
+  assert.match(result.text, /Đã nén context/);
+  assert.match(result.text, /tóm tắt/);
+});
+
+test('/compact không cần nén thì báo rõ', async () => {
+  const d = deps();
+  d.compaction = { async compactIfNeeded() { return null; } };
+  const commands = createCommands(d);
+  const result = await commands.run({ name: 'compact', args: '' }, ctx(d));
+  assert.match(result.text, /chưa cần nén/);
 });
 
 test('/status có thông tin model và context', async () => {

@@ -70,9 +70,22 @@ test('mặc định không giới hạn context / số tin trả lời', async (
   assert.equal(config.context.maxTokens, 0);
   assert.equal(config.context.maxMessages, 0);
   assert.equal(config.context.maxCharsPerMessage, 12_000);
-  assert.equal(config.context.maxImages, 2);
   assert.equal(config.search.cacheTtlMs, 600_000);
   assert.equal(config.maxQueueDepth, 50);
+});
+
+test('compaction: mặc định và validate ngưỡng', async () => {
+  const dir = await tempDir();
+  const config = loadConfig({ argv: [], env: baseEnv(), cwd: dir });
+  assert.equal(config.context.modelWindow, 0);
+  assert.equal(config.context.compactThreshold, 0.8);
+  assert.equal(config.context.keepRecent, 8);
+  assert.equal(config.context.summaryMaxChars, 1200);
+  assert.equal(config.context.toolResultKeepChars, 600);
+  assert.throws(
+    () => loadConfig({ argv: [], env: baseEnv({ CONTEXT_COMPACT_THRESHOLD: '1.5' }), cwd: dir }),
+    /CONTEXT_COMPACT_THRESHOLD/,
+  );
 });
 
 test('DATA_DIR tương đối resolve theo gốc repo, không theo cwd', async () => {

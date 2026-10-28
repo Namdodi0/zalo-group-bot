@@ -1,46 +1,33 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { estimateMessageTokens, estimateTextTokens, createCalibrator, IMAGE_TOKENS } from '../src/context/tokens.js';
-import { buildMessages } from '../src/context/builder.js';
+import { assembleRequest } from '../src/context/assembler.js';
+import {
+  contextEntry,
+  freshRecord,
+  summaryEntry,
+  toolCallEntry,
+  toolResultEntry,
+} from '../src/context/record.js';
+import { createTokenMeter, estimateMessageTokens, estimateTextTokens } from '../src/context/token-meter.js';
 
-function makeRecord(messages, summary = '') {
-  return {
-    chatId: 'chat-1',
-    chatType: 'GROUP',
-    summary,
-    messages,
-    turns: 0,
-    updatedAt: 0,
-    meta: { thinking: null },
-  };
+function assemble(messages, overrides = {}) {
+  const record = freshRecord('chat-1', 'GROUP', 0);
+  record.messages.push(...messages);
+  return assembleRequest({ systemPrompt: 'system', record, maxTokens: 0, maxMessages: 0, ...overrides });
 }
 
 test('estimate tăng theo độ dài', () => {
   assert.equal(estimateTextTokens(''), 0);
   assert.ok(estimateTextTokens('a'.repeat(320)) > estimateTextTokens('a'.repeat(32)));
-  assert.ok(estimateMessageTokens({ text: 'abc', imageUrl: 'https://x/y.png' }) > IMAGE_TOKENS);
+  assert.ok(estimateMessageTokens({ text: 'abc' }) > 0);
 });
 
-test('calibrator kẹp trong biên', () => {
-  const cal = createCalibrator();
-  cal.observe(100, 300);
-  assert.ok(cal.ratio() <= 2.5);
-  cal.observe(100, 1);
-  assert.ok(cal.ratio() >= 0.5);
-});
-
-test('buildMessages giữ system + lượt gần nhất', () => {
+test('assemble giữ system + lượt gần nhất, báo dropped/needsSummary', () => {
   const messages = [];
   for (let i = 0; i < 60; i += 1) {
     messages.push({ role: i % 2 ? 'assistant' : 'user', text: `tin ${i}`, ts: i });
   }
-  const built = buildMessages({
-    systemPrompt: 'system',
-    record: makeRecord(messages),
-    maxTokens: 6000,
-    maxMessages: 10,
-    calibrator: { estimate: (raw) => raw },
-  });
+  const built = assemble(messages, { maxTokens: 6000, maxMessages: 10, meter: createTokenMeter() });
   assert.equal(built.messages[0].role, 'system');
   assert.equal(built.messages[0].content, 'system');
   const convo = built.messages.slice(1);
@@ -49,30 +36,27 @@ test('buildMessages giữ system + lượt gần nhất', () => {
   assert.equal(built.needsSummary, true);
 });
 
-test('buildMessages chèn summary', () => {
-  const built = buildMessages({
-    systemPrompt: 'system',
-    record: makeRecord([{ role: 'user', text: 'xin chào', ts: 1 }], 'Người dùng tên Nam.'),
-    maxTokens: 6000,
-    maxMessages: 40,
-  });
-  assert.equal(built.messages[1].role, 'system');
+test('summary là message user, không phải system', () => {
+  const built = assemble([summaryEntry('Người dùng tên Nam.', 1), { role: 'user', text: 'xin chào', ts: 2 }]);
+  assert.equal(built.messages[1].role, 'user');
   assert.match(String(built.messages[1].content), /Nam/);
-  assert.equal(built.needsSummary, false);
+  assert.equal(built.messages.filter((message) => message.role === 'system').length, 1);
 });
 
-test('buildMessages không giới hạn khi maxTokens/maxMessages = 0', () => {
+test('summary luôn được giữ khi trim', () => {
+  const messages = [summaryEntry('nhớ tên Nam', 0)];
+  for (let i = 0; i < 30; i += 1) messages.push({ role: i % 2 ? 'assistant' : 'user', text: `tin ${i}`, ts: i + 1 });
+  const built = assemble(messages, { maxMessages: 4 });
+  assert.equal(built.messages[1].role, 'user');
+  assert.match(String(built.messages[1].content), /Nam/);
+});
+
+test('không giới hạn khi maxTokens/maxMessages = 0', () => {
   const messages = [];
   for (let i = 0; i < 80; i += 1) {
     messages.push({ role: i % 2 ? 'assistant' : 'user', text: `tin ${i}`, ts: i });
   }
-  const built = buildMessages({
-    systemPrompt: 'system',
-    record: makeRecord(messages),
-    maxTokens: 0,
-    maxMessages: 0,
-    calibrator: { estimate: (raw) => raw },
-  });
+  const built = assemble(messages);
   assert.equal(built.messages.length, 81);
   assert.equal(built.dropped, 0);
   assert.equal(built.needsSummary, false);
@@ -80,50 +64,47 @@ test('buildMessages không giới hạn khi maxTokens/maxMessages = 0', () => {
 });
 
 test('maxCharsPerMessage=0 không cắt tin dài', () => {
-  const long = { role: 'user', text: 'x'.repeat(20_000), ts: 1 };
-  const built = buildMessages({
-    systemPrompt: 'system',
-    record: makeRecord([long]),
-    maxTokens: 0,
-    maxMessages: 0,
-    maxCharsPerMessage: 0,
-    calibrator: { estimate: (raw) => raw },
-  });
+  const built = assemble([{ role: 'user', text: 'x'.repeat(20_000), ts: 1 }], { maxCharsPerMessage: 0 });
   assert.equal(String(built.messages[1].content).length, 20_000);
 });
 
-test('maxImages điều khiển số ảnh gửi kèm', () => {
-  const messages = [1, 2, 3].map((i) => ({
-    role: 'user',
-    text: `ảnh ${i}`,
-    imageUrl: `https://x/${i}.png`,
-    ts: i,
-  }));
-  const built = buildMessages({
-    systemPrompt: 'system',
-    record: makeRecord(messages),
-    maxTokens: 0,
-    maxMessages: 0,
-    maxImages: 1,
-  });
-  assert.equal(built.messages.filter((message) => Array.isArray(message.content)).length, 1);
+test('ảnh không bao giờ được gửi vào model (text-only)', () => {
+  const built = assemble([
+    { role: 'user', text: 'xem ảnh này', imageUrl: 'https://x/1.png', ts: 1 },
+    { role: 'user', text: 'ảnh 2', imageUrl: 'https://x/2.png', ts: 2 },
+  ]);
+  assert.equal(built.messages.some((message) => Array.isArray(message.content)), false);
+  assert.equal(built.messages[1].content, 'xem ảnh này');
 });
 
-test('buildMessages giới hạn 2 ảnh trong context', () => {
-  const messages = [1, 2, 3].map((i) => ({
-    role: 'user',
-    text: `ảnh ${i}`,
-    imageUrl: `https://x/${i}.png`,
-    ts: i,
-  }));
-  const built = buildMessages({
-    systemPrompt: 'system',
-    record: makeRecord(messages),
-    maxTokens: 6000,
-    maxMessages: 40,
+test('tool-call/tool-result map đúng wire format, không mở đầu bằng tool-result mồ côi', () => {
+  const messages = [
+    toolCallEntry({ toolCalls: [{ id: 'c1', name: 'web_search', arguments: { query: 'x' } }], ts: 1 }),
+    toolResultEntry({ toolCallId: 'c1', text: 'kết quả', ts: 2 }),
+    { role: 'user', text: 'cảm ơn', ts: 3 },
+  ];
+  const built = assemble(messages, { maxMessages: 10 });
+  assert.equal(built.messages[1].role, 'assistant');
+  assert.equal(built.messages[1].tool_calls[0].function.name, 'web_search');
+  assert.equal(built.messages[2].role, 'tool');
+  assert.equal(built.messages[2].tool_call_id, 'c1');
+  assert.equal(built.messages[3].content, 'cảm ơn');
+
+  const trimmed = assemble(messages, { maxMessages: 2 });
+  assert.equal(trimmed.messages[1].content, 'cảm ơn');
+});
+
+test('context entry được gửi với role user', () => {
+  const built = assemble([contextEntry({ source: 'runtime:time', text: '[Thời gian hiện tại: hôm nay]', ts: 1 })]);
+  assert.equal(built.messages[1].role, 'user');
+  assert.equal(built.messages[1].content, '[Thời gian hiện tại: hôm nay]');
+});
+
+test('pressure tính khi biết context window', () => {
+  const built = assemble([{ role: 'user', text: 'x'.repeat(400), ts: 1 }], {
+    meter: createTokenMeter(),
+    contextWindow: 100,
   });
-  const withImage = built.messages.filter((message) => Array.isArray(message.content));
-  assert.equal(withImage.length, 2);
-  const textOnly = built.messages.filter((message) => typeof message.content === 'string');
-  assert.ok(textOnly.some((message) => message.content.startsWith('[ảnh đã gửi]')));
+  assert.ok(built.pressure > 0);
+  assert.equal(built.contextWindow, 100);
 });

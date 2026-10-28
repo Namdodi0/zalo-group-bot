@@ -3,23 +3,27 @@ import assert from 'node:assert/strict';
 import { createModelRouter } from '../src/ai/router.js';
 import { makeConfig, silentLogger } from '../test-utils/helpers.js';
 
-function makeClients() {
+function makeService(providers = ['deepseek', 'nim']) {
   /** @type {any[]} */
   const calls = [];
-  const make = (provider) => ({
-    provider,
+  return {
+    calls,
+    providers: () => providers,
+    has: (provider) => providers.includes(provider),
     async chat(input) {
-      calls.push({ provider, input });
-      return { content: provider, toolCalls: [], usage: null };
+      calls.push(input);
+      return { content: input.provider, toolCalls: [], usage: null };
     },
-  });
-  return { calls, deepseek: make('deepseek'), nim: make('nim') };
+    async warmup(provider, options = {}) {
+      return { ok: true, ms: 1, model: options.model ?? provider };
+    },
+  };
 }
 
 test('router: mặc định deepseek, /model đổi theo record, fallback nim-light', async () => {
   const config = makeConfig();
-  const clients = makeClients();
-  const router = createModelRouter({ config, clients, logger: silentLogger });
+  const service = makeService();
+  const router = createModelRouter({ config, service, logger: silentLogger });
 
   assert.equal(router.defaultAlias, 'deepseek');
   assert.equal(router.fallbackAlias, 'nim-light');
@@ -32,37 +36,42 @@ test('router: mặc định deepseek, /model đổi theo record, fallback nim-li
   assert.equal(router.find('không có'), null);
 
   await router.chat({ record: { meta: { model: 'nim' } }, messages: [] });
-  assert.equal(clients.calls[0].provider, 'nim');
+  assert.equal(service.calls[0].provider, 'nim');
 
   await router.chatWith('pro', { messages: [] });
-  assert.equal(clients.calls[1].input.model, 'deepseek-v4-pro');
+  assert.equal(service.calls[1].model, 'deepseek-v4-pro');
 
   await router.chatWith(router.fallbackAlias, { messages: [] });
-  assert.equal(clients.calls[2].provider, 'nim');
+  assert.equal(service.calls[2].provider, 'nim');
 });
 
 test('router: alias ultra trỏ tới Nemotron 3 Ultra, đổi được trong chat', async () => {
   const config = makeConfig();
-  const clients = makeClients();
-  const router = createModelRouter({ config, clients, logger: silentLogger });
+  const service = makeService();
+  const router = createModelRouter({ config, service, logger: silentLogger });
 
   assert.equal(router.find('ultra').model, 'nvidia/nemotron-3-ultra-550b-a55b');
   assert.equal(router.resolve({ meta: { model: 'ultra' } }).alias, 'ultra');
   assert.equal(router.list().some((item) => item.alias === 'ultra'), true);
 
   await router.chat({ record: { meta: { model: 'ultra' } }, messages: [] });
-  assert.equal(clients.calls[0].provider, 'nim');
-  assert.equal(clients.calls[0].input.model, 'nvidia/nemotron-3-ultra-550b-a55b');
+  assert.equal(service.calls[0].provider, 'nim');
+  assert.equal(service.calls[0].model, 'nvidia/nemotron-3-ultra-550b-a55b');
 });
 
 test('router: alias của provider chưa cấu hình bị bỏ qua', () => {
   const config = makeConfig({ model: { defaultAlias: 'deepseek', fallbackAlias: 'nim-light' } });
-  const router = createModelRouter({
-    config,
-    clients: { nim: { provider: 'nim', chat: async () => ({}) } },
-    logger: silentLogger,
-  });
+  const router = createModelRouter({ config, service: makeService(['nim']), logger: silentLogger });
   assert.equal(router.list().some((item) => item.provider === 'deepseek'), false);
   assert.equal(router.defaultAlias, 'nim');
   assert.equal(router.fallbackAlias, 'nim-light');
+});
+
+test('router: warmup chọn đúng provider và model của alias', async () => {
+  const config = makeConfig();
+  const service = makeService();
+  const router = createModelRouter({ config, service, logger: silentLogger });
+  const result = await router.warmup('ultra');
+  assert.equal(result.ok, true);
+  assert.equal(result.model, 'nvidia/nemotron-3-ultra-550b-a55b');
 });

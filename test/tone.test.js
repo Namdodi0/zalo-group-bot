@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { buildSystemPrompt } from '../src/ai/prompt.js';
+import { buildSystemPrompt } from '../src/ai/prompt/index.js';
 import { createCommands } from '../src/commands/index.js';
 import { loadConfig } from '../src/config.js';
 import { createMetrics } from '../src/metrics.js';

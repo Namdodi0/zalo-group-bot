@@ -8,11 +8,14 @@
  */
 import path from 'node:path';
 import { createAgent } from '../src/ai/agent.js';
-import { DEEPSEEK_REASONING_MAP, NIM_REASONING_MAP, createLlmClient } from '../src/ai/nim.js';
+import { DEEPSEEK_REASONING_MAP, NIM_REASONING_MAP, createOpenAiCompatAdapter } from '../src/ai/llm/adapter-openai.js';
+import { createLlmService } from '../src/ai/llm/service.js';
 import { createModelRouter } from '../src/ai/router.js';
 import { createStickerStore } from '../src/ai/stickers.js';
+import { createSummarizer } from '../src/ai/summarize.js';
 import { createToolRuntime } from '../src/ai/tools.js';
 import { createCommands } from '../src/commands/index.js';
+import { createCompactionEngine } from '../src/context/compaction/engine.js';
 import { loadConfig } from '../src/config.js';
 import { createContextStore } from '../src/context/store.js';
 import { loadEnvFiles } from '../src/env.js';
@@ -72,10 +75,10 @@ const zalo = {
   stopAllTyping: () => {},
 };
 
-/** @type {Record<string, any>} */
-const clients = {};
+/** @type {any[]} */
+const adapters = [];
 if (config.deepseek.apiKey) {
-  clients.deepseek = createLlmClient({
+  adapters.push(createOpenAiCompatAdapter({
     provider: 'deepseek',
     apiKey: config.deepseek.apiKey,
     baseUrl: config.deepseek.baseUrl,
@@ -85,10 +88,10 @@ if (config.deepseek.apiKey) {
     metrics,
     defaultTemperature: config.deepseek.temperature,
     reasoningMap: DEEPSEEK_REASONING_MAP,
-  });
+  }));
 }
 if (config.nim.apiKey) {
-  clients.nim = createLlmClient({
+  adapters.push(createOpenAiCompatAdapter({
     provider: 'nim',
     apiKey: config.nim.apiKey,
     baseUrl: config.nim.baseUrl,
@@ -98,9 +101,10 @@ if (config.nim.apiKey) {
     metrics,
     defaultTemperature: config.nim.temperature,
     reasoningMap: NIM_REASONING_MAP,
-  });
+  }));
 }
-const models = createModelRouter({ config, clients, logger });
+const service = createLlmService({ adapters, logger, metrics });
+const models = createModelRouter({ config, service, logger });
 
 const tavily = config.search.enabled
   ? createTavilyClient({
@@ -115,9 +119,33 @@ const tavily = config.search.enabled
 const validator = createImageValidator({ logger });
 const stickers = createStickerStore({ file: config.sticker.file, extraIds: config.sticker.extraIds, logger });
 await stickers.load();
+const summarize = createSummarizer({ llm: models, logger });
+const compaction = createCompactionEngine({ config, logger, metrics, summarize });
 const tools = createToolRuntime({ config, tavily, zalo, validator, stickers, logger, metrics });
-const commands = createCommands({ config, store, metrics, zalo, http: httpClient, models, stickers, logger });
-const agent = createAgent({ config, logger, metrics, zalo, llm: models, store, tools, commands, stickers, http: httpClient });
+const commands = createCommands({
+  config,
+  store,
+  metrics,
+  zalo,
+  http: httpClient,
+  models,
+  stickers,
+  logger,
+  compaction,
+});
+const agent = createAgent({
+  config,
+  logger,
+  metrics,
+  zalo,
+  llm: models,
+  store,
+  tools,
+  commands,
+  stickers,
+  http: httpClient,
+  compaction,
+});
 
 const started = Date.now();
 await agent.handle({

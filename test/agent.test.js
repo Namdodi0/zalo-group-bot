@@ -4,8 +4,10 @@ import fsp from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { __test__ as agentTest, createAgent } from '../src/ai/agent.js';
+import { LLM_ERROR, LlmError } from '../src/ai/llm/errors.js';
 import { createToolRuntime } from '../src/ai/tools.js';
 import { createCommands } from '../src/commands/index.js';
+import { createCompactionEngine } from '../src/context/compaction/engine.js';
 import { createContextStore } from '../src/context/store.js';
 import { createMetrics } from '../src/metrics.js';
 import { makeConfig, silentLogger, textEvent } from '../test-utils/helpers.js';
@@ -15,7 +17,10 @@ import { makeConfig, silentLogger, textEvent } from '../test-utils/helpers.js';
  */
 async function setup(options = {}) {
   const dir = await fsp.mkdtemp(path.join(os.tmpdir(), 'zalo-bot-test-'));
-  const config = makeConfig({ context: { dir }, ...(options.configOverrides ?? {}) });
+  const config = makeConfig({
+    ...(options.configOverrides ?? {}),
+    context: { dir, ...(options.configOverrides?.context ?? {}) },
+  });
   const metrics = createMetrics();
   const logger = options.logger ?? silentLogger;
   const store = createContextStore({ dir, logger, debounceMs: 2 });
@@ -53,6 +58,7 @@ async function setup(options = {}) {
   const nimCalls = [];
   const replies = options.replies ?? [{ content: 'Xin chào 👋', toolCalls: [] }];
   let index = 0;
+  let overflowed = false;
   const target = {
     alias: 'deepseek',
     provider: 'deepseek',
@@ -62,6 +68,10 @@ async function setup(options = {}) {
   async function reply(input) {
     nimCalls.push(input);
     if (options.delayMs) await new Promise((resolve) => setTimeout(resolve, options.delayMs));
+    if (options.overflowFirst && !overflowed) {
+      overflowed = true;
+      throw new LlmError(LLM_ERROR.CONTEXT_WINDOW_EXCEEDED, 'maximum context length exceeded', { status: 400 });
+    }
     if (options.nimError) throw options.nimError;
     if (options.deltaText && input.onDelta) await input.onDelta(options.deltaText);
     const item = replies[Math.min(index, replies.length - 1)];
@@ -106,6 +116,12 @@ async function setup(options = {}) {
     logger,
     metrics,
   });
+  const compaction = createCompactionEngine({
+    config,
+    logger,
+    metrics,
+    summarize: async () => 'tóm tắt thử',
+  });
   const commands = createCommands({
     config,
     store,
@@ -118,8 +134,9 @@ async function setup(options = {}) {
     models: llm,
     stickers,
     logger,
+    compaction,
   });
-  const agent = createAgent({ config, logger, metrics, zalo, llm, store, tools, commands, stickers });
+  const agent = createAgent({ config, logger, metrics, zalo, llm, store, tools, commands, stickers, compaction });
 
   return { agent, sent, sentStickers, events, nimCalls, store, config, metrics, dir };
 }
@@ -174,7 +191,7 @@ test('/help xử lý trước model', async () => {
   assert.match(sent[0].text, /\/status/);
 });
 
-test('ảnh của người dùng được đưa vào messages dạng image_url', async () => {
+test('ảnh người dùng gửi chỉ được ghi chú, không gửi image_url', async () => {
   const { agent, nimCalls } = await setup();
   await agent.handle(
     textEvent('', {
@@ -184,10 +201,18 @@ test('ảnh của người dùng được đưa vào messages dạng image_url',
     }),
   );
   const messages = nimCalls[0].messages;
-  const last = messages.at(-1);
-  assert.ok(Array.isArray(last.content));
-  assert.equal(last.content[1].type, 'image_url');
-  assert.equal(last.content[1].image_url.url, 'https://example.com/cat.png');
+  assert.equal(messages.some((message) => Array.isArray(message.content)), false);
+  assert.match(String(messages.at(-1).content), /Người dùng đã gửi một ảnh/);
+});
+
+test('ảnh gửi kèm chữ được ghi chú, nội dung ảnh không lên model', async () => {
+  const { agent, nimCalls } = await setup();
+  await agent.handle(textEvent('xem ảnh này', { imageUrl: 'https://example.com/cat.png' }));
+  const messages = nimCalls[0].messages;
+  assert.equal(messages.some((message) => Array.isArray(message.content)), false);
+  const last = String(messages.at(-1).content);
+  assert.match(last, /xem ảnh này/);
+  assert.match(last, /gửi kèm ảnh/);
 });
 
 test('tool call web_search rồi trả lời kèm nguồn', async () => {
@@ -351,32 +376,35 @@ test('queue đầy thì bỏ tin và báo bận', async () => {
   assert.ok(sent.some((message) => /nhiều tin/.test(message.text)));
 });
 
-test('injectTimeContext thêm giờ vào tin user cuối', () => {
-  const messages = [
-    { role: 'system', content: 'static' },
-    { role: 'user', content: 'hi' },
-  ];
-  agentTest.injectTimeContext(messages, new Date(2026, 9, 26, 18, 0, 0));
-  assert.match(messages[1].content, /Thời gian hiện tại/);
-  assert.match(messages[1].content, /không nhắc lại ngày giờ/);
-  assert.equal(messages[0].content, 'static');
+test('context thời gian: message user riêng, bền vững và không sửa lượt user', async () => {
+  const { agent, store } = await setup({ replies: [{ content: 'A' }, { content: 'B' }] });
+  await agent.handle(textEvent('hôm nay thế nào', { messageId: 'm1' }));
+
+  const record = await store.get('chat-1');
+  const timeEntries = record.messages.filter((m) => m.kind === 'context' && m.source === 'runtime:time');
+  assert.equal(timeEntries.length, 1);
+  assert.match(timeEntries[0].text, /Thời gian hiện tại/);
+  const userTurn = record.messages.find((m) => m.kind === 'turn' && m.role === 'user');
+  assert.equal(userTurn.text.includes('Thời gian hiện tại'), false);
 });
 
-test('injectTimeContext: tắt giờ thì chỉ chèn ghi chú', () => {
-  const messages = [{ role: 'user', content: 'hi' }];
-  agentTest.injectTimeContext(messages, new Date(2026, 9, 26, 18, 0, 0), ['Độ dài: 2 câu'], {
-    includeTime: false,
-  });
-  assert.equal(messages[0].content.includes('Thời gian hiện tại'), false);
-  assert.match(messages[0].content, /Độ dài: 2 câu/);
+test('context thời gian được refresh, không nhân đôi qua các lượt', async () => {
+  const { agent, store } = await setup({ replies: [{ content: 'A' }, { content: 'B' }] });
+  await agent.handle(textEvent('hôm nay thế nào', { messageId: 'm1' }));
+  await agent.handle(textEvent('mai đi học không', { messageId: 'm2' }));
+
+  const record = await store.get('chat-1');
+  const timeEntries = record.messages.filter((m) => m.kind === 'context' && m.source === 'runtime:time');
+  assert.equal(timeEntries.length, 1);
 });
 
-test('needsTimeContext: chỉ tin nhắn nhắc mốc thời gian mới cần giờ', () => {
-  assert.equal(agentTest.needsTimeContext('hôm nay thế nào'), true);
-  assert.equal(agentTest.needsTimeContext('mấy giờ rồi'), true);
-  assert.equal(agentTest.needsTimeContext('mai đi học không'), true);
-  assert.equal(agentTest.needsTimeContext('giải thích TCP'), false);
-  assert.equal(agentTest.needsTimeContext('bot ơi'), false);
+test('context thời gian biến mất khi lượt mới không nhắc mốc thời gian', async () => {
+  const { agent, store } = await setup({ replies: [{ content: 'A' }, { content: 'B' }] });
+  await agent.handle(textEvent('hôm nay thế nào', { messageId: 'm1' }));
+  await agent.handle(textEvent('giải thích TCP', { messageId: 'm2' }));
+
+  const record = await store.get('chat-1');
+  assert.equal(record.messages.some((m) => m.kind === 'context' && m.source === 'runtime:time'), false);
 });
 
 test('câu hỏi thường không chèn ngày giờ vào prompt gửi model', async () => {
@@ -387,11 +415,44 @@ test('câu hỏi thường không chèn ngày giờ vào prompt gửi model', as
   assert.equal(lastUser.content.includes('Độ dài'), false);
 });
 
-test('câu hỏi có mốc thời gian thì chèn ngày giờ', async () => {
+test('yêu cầu ngắn không chèn ghi chú độ dài vào prompt gửi model', async () => {
+  const { agent, nimCalls } = await setup();
+  await agent.handle(textEvent('giải thích TCP ngắn thôi'));
+  const lastUser = [...nimCalls.at(-1).messages].reverse().find((message) => message.role === 'user');
+  assert.equal(lastUser.content.includes('Độ dài'), false);
+});
+
+test('câu hỏi có mốc thời gian: payload có message context thời gian', async () => {
   const { agent, nimCalls } = await setup();
   await agent.handle(textEvent('hôm nay thế nào'));
-  const lastUser = [...nimCalls.at(-1).messages].reverse().find((message) => message.role === 'user');
-  assert.match(lastUser.content, /Thời gian hiện tại/);
+  const messages = nimCalls.at(-1).messages;
+  assert.ok(
+    messages.some((message) => typeof message.content === 'string' && message.content.includes('Thời gian hiện tại')),
+  );
+});
+
+test('context overflow: nén context rồi thử lại, không báo lỗi cho user', async () => {
+  const { agent, sent, store } = await setup({
+    overflowFirst: true,
+    replies: [{ content: 'Đã trả lời sau khi nén' }],
+    configOverrides: { context: { keepRecent: 4 } },
+  });
+  const record = await store.get('chat-1', { chatType: 'GROUP' });
+  for (let index = 0; index < 16; index += 1) {
+    record.messages.push({
+      role: index % 2 ? 'assistant' : 'user',
+      kind: 'turn',
+      text: `tin cũ ${index}`,
+      ts: index,
+    });
+  }
+  store.touch('chat-1');
+
+  await agent.handle(textEvent('câu hỏi mới', { messageId: 'overflow-1' }));
+
+  assert.match(sent.at(-1).text, /sau khi nén/);
+  const updated = await store.get('chat-1');
+  assert.equal(updated.messages.some((message) => message.kind === 'summary'), true);
 });
 
 test('lượt 2 gửi kèm tin nhắn user + assistant của lượt 1 lên API', async () => {

@@ -80,10 +80,11 @@ export const DEEPSEEK_REASONING_MAP = {
 };
 
 /**
- * Client OpenAI-compatible (NVIDIA NIM, DeepSeek, ...).
- * @param {{provider?: string, apiKey: string, baseUrl: string, model: string, http: ReturnType<typeof import('../http.js').createHttp>, logger: import('../logger.js').Logger, metrics?: any, defaultTemperature?: number, reasoningMap?: Record<string,string>}} options
+ * Adapter OpenAI-compatible (NVIDIA NIM, DeepSeek, ...).
+ * Wire format nằm trọn ở đây; service chỉ biết vocabulary trung lập.
+ * @param {{provider?: string, apiKey: string, baseUrl: string, model: string, http: ReturnType<typeof import('../../http.js').createHttp>, logger: import('../../logger.js').Logger, metrics?: any, defaultTemperature?: number, reasoningMap?: Record<string,string>}} options
  */
-export function createLlmClient(options) {
+export function createOpenAiCompatAdapter(options) {
   const provider = options.provider ?? 'nim';
   const apiKey = options.apiKey;
   const baseUrl = options.baseUrl.replace(/\/+$/, '');
@@ -392,7 +393,7 @@ export function createLlmClient(options) {
     }
   }
 
-  return { chat, warmup, model, endpoint, provider };
+  return { id: provider, chat, warmup, model, endpoint, provider, credentialed: Boolean(apiKey) };
 }
 
 export const __test__ = { parseChoice, reasoningEffort, tokensPerSec };

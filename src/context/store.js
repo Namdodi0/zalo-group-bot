@@ -1,22 +1,26 @@
 import crypto from 'node:crypto';
 import fsp from 'node:fs/promises';
 import path from 'node:path';
+import { freshRecord, normalizeRecord } from './record.js';
 
 /**
  * @typedef {object} StoredMessage
- * @property {'user'|'assistant'} role
+ * @property {'user'|'assistant'|'tool'} role
+ * @property {string} [kind] turn | context | summary | tool-call | tool-result
  * @property {string} text
  * @property {string} [name]
- * @property {string|null} [imageUrl]
+ * @property {string} [source]
  * @property {number} ts
  * @property {string} [messageId]
+ * @property {string} [toolCallId]
+ * @property {Array<{id: string, name: string, arguments: any, rawArguments?: string}>} [toolCalls]
  */
 
 /**
  * @typedef {object} ChatRecord
+ * @property {number} schemaVersion
  * @property {string} chatId
  * @property {string} chatType
- * @property {string} summary
  * @property {StoredMessage[]} messages
  * @property {number} turns
  * @property {number} updatedAt
@@ -52,20 +56,6 @@ export function createContextStore(options) {
   async function init() {
     await fsp.mkdir(dir, { recursive: true });
     await prune();
-  }
-
-  /** @param {string} chatId @param {string} chatType */
-  function freshRecord(chatId, chatType) {
-    return {
-      chatId,
-      chatType,
-      summary: '',
-      messages: [],
-      turns: 0,
-      updatedAt: now(),
-      meta: { thinking: null },
-      seen: [],
-    };
   }
 
   /** @param {unknown} value @returns {value is ChatRecord} */
@@ -126,7 +116,7 @@ export function createContextStore(options) {
     try {
       const raw = await fsp.readFile(fileFor(chatId), 'utf8');
       const parsed = JSON.parse(raw);
-      if (isRecord(parsed)) loaded = parsed;
+      if (isRecord(parsed)) loaded = normalizeRecord(parsed);
     } catch (error) {
       const code = /** @type {any} */ (error)?.code;
       if (code !== 'ENOENT') {
@@ -134,11 +124,8 @@ export function createContextStore(options) {
       }
     }
 
-    const record = loaded ?? freshRecord(chatId, meta.chatType ?? 'UNKNOWN');
+    const record = normalizeRecord(loaded ?? freshRecord(chatId, meta.chatType ?? 'UNKNOWN', now()));
     if (meta.chatType) record.chatType = meta.chatType;
-    if (!record.meta) record.meta = { thinking: null };
-    if (!Array.isArray(record.messages)) record.messages = [];
-    if (!Array.isArray(record.seen)) record.seen = [];
     memory.set(chatId, record);
     evictIfNeeded();
     return record;
@@ -182,8 +169,8 @@ export function createContextStore(options) {
 
     if (options.keepMeta && removed) {
       removed.messages = [];
-      removed.summary = '';
       removed.turns = 0;
+      removed.schemaVersion = 2;
       removed.updatedAt = now();
       memory.set(chatId, removed);
       await persist(removed);

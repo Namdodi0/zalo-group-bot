@@ -1,4 +1,4 @@
-import { DEEPSEEK_REASONING_MAP, NIM_REASONING_MAP, createLlmClient } from '../src/ai/nim.js';
+import { DEEPSEEK_REASONING_MAP, NIM_REASONING_MAP, createOpenAiCompatAdapter } from '../src/ai/llm/adapter-openai.js';
 import { loadConfig } from '../src/config.js';
 import { loadEnvFiles } from '../src/env.js';
 import { createHttp } from '../src/http.js';
@@ -43,7 +43,7 @@ async function main() {
 
   // 2. DeepSeek (model chính)
   if (config.deepseek.apiKey) {
-    const deepseek = createLlmClient({
+    const deepseek = createOpenAiCompatAdapter({
       provider: 'deepseek',
       apiKey: config.deepseek.apiKey,
       baseUrl: config.deepseek.baseUrl,
@@ -79,7 +79,7 @@ async function main() {
 
   // 3. NIM (model dự phòng)
   if (config.nim.apiKey) {
-    const nim = createLlmClient({
+    const nim = createOpenAiCompatAdapter({
       provider: 'nim',
       apiKey: config.nim.apiKey,
       baseUrl: config.nim.baseUrl,

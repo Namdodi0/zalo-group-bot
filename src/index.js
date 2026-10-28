@@ -1,11 +1,14 @@
 import http from 'node:http';
 import { createAgent } from './ai/agent.js';
-import { DEEPSEEK_REASONING_MAP, NIM_REASONING_MAP, createLlmClient } from './ai/nim.js';
+import { DEEPSEEK_REASONING_MAP, NIM_REASONING_MAP, createOpenAiCompatAdapter } from './ai/llm/adapter-openai.js';
+import { createLlmService } from './ai/llm/service.js';
 import { createModelRouter } from './ai/router.js';
+import { createSummarizer } from './ai/summarize.js';
 import { createStickerStore } from './ai/stickers.js';
 import { createToolRuntime } from './ai/tools.js';
 import { createCommands } from './commands/index.js';
 import { collectSecrets, ConfigError, describeConfig, HELP_TEXT, isEphemeralDataDir, loadConfig } from './config.js';
+import { createCompactionEngine } from './context/compaction/engine.js';
 import { createContextStore } from './context/store.js';
 import { describeEnvHints, loadEnvFiles } from './env.js';
 import { createHttp } from './http.js';
@@ -90,35 +93,40 @@ async function main() {
     typingIntervalMs: config.typingIntervalMs,
   });
 
-  /** @type {Record<string, any>} */
-  const clients = {};
+  /** @type {any[]} */
+  const adapters = [];
   if (config.deepseek.apiKey) {
-    clients.deepseek = createLlmClient({
-      provider: 'deepseek',
-      apiKey: config.deepseek.apiKey,
-      baseUrl: config.deepseek.baseUrl,
-      model: config.deepseek.model,
-      http: httpClient,
-      logger,
-      metrics,
-      defaultTemperature: config.deepseek.temperature,
-      reasoningMap: DEEPSEEK_REASONING_MAP,
-    });
+    adapters.push(
+      createOpenAiCompatAdapter({
+        provider: 'deepseek',
+        apiKey: config.deepseek.apiKey,
+        baseUrl: config.deepseek.baseUrl,
+        model: config.deepseek.model,
+        http: httpClient,
+        logger,
+        metrics,
+        defaultTemperature: config.deepseek.temperature,
+        reasoningMap: DEEPSEEK_REASONING_MAP,
+      }),
+    );
   }
   if (config.nim.apiKey) {
-    clients.nim = createLlmClient({
-      provider: 'nim',
-      apiKey: config.nim.apiKey,
-      baseUrl: config.nim.baseUrl,
-      model: config.nim.model,
-      http: httpClient,
-      logger,
-      metrics,
-      defaultTemperature: config.nim.temperature,
-      reasoningMap: NIM_REASONING_MAP,
-    });
+    adapters.push(
+      createOpenAiCompatAdapter({
+        provider: 'nim',
+        apiKey: config.nim.apiKey,
+        baseUrl: config.nim.baseUrl,
+        model: config.nim.model,
+        http: httpClient,
+        logger,
+        metrics,
+        defaultTemperature: config.nim.temperature,
+        reasoningMap: NIM_REASONING_MAP,
+      }),
+    );
   }
-  const models = createModelRouter({ config, clients, logger });
+  const service = createLlmService({ adapters, logger, metrics });
+  const models = createModelRouter({ config, service, logger });
 
   const tavily = config.search.enabled
     ? createTavilyClient({
@@ -134,9 +142,33 @@ async function main() {
   const validator = createImageValidator({ logger, timeoutMs: 4000 });
   const stickers = createStickerStore({ file: config.sticker.file, extraIds: config.sticker.extraIds, logger });
   await stickers.load();
+  const summarize = createSummarizer({ llm: models, logger });
+  const compaction = createCompactionEngine({ config, logger, metrics, summarize });
   const tools = createToolRuntime({ config, tavily, zalo, validator, stickers, logger, metrics });
-  const commands = createCommands({ config, store, metrics, zalo, http: httpClient, models, stickers, logger });
-  const agent = createAgent({ config, logger, metrics, zalo, llm: models, store, tools, commands, stickers, http: httpClient });
+  const commands = createCommands({
+    config,
+    store,
+    metrics,
+    zalo,
+    http: httpClient,
+    models,
+    stickers,
+    logger,
+    compaction,
+  });
+  const agent = createAgent({
+    config,
+    logger,
+    metrics,
+    zalo,
+    llm: models,
+    store,
+    tools,
+    commands,
+    stickers,
+    http: httpClient,
+    compaction,
+  });
 
   const primary = models.resolve(null);
   const fallback = models.resolve({ meta: { model: models.fallbackAlias } });
@@ -186,16 +218,15 @@ async function main() {
     const warmTargets = [];
     for (const alias of new Set([models.defaultAlias, models.fallbackAlias])) {
       const target = models.find(alias);
-      const client = target ? clients[target.provider] : null;
-      if (!client) continue;
+      if (!target) continue;
       const key = `${target.provider}:${target.model}`;
       if (warmTargets.some((item) => item.key === key)) continue;
-      warmTargets.push({ key, alias, target, client });
+      warmTargets.push({ key, alias, target });
     }
     // Không await: warmup chạy nền, bot vào polling ngay.
     (async () => {
       for (const item of warmTargets) {
-        const result = await item.client.warmup({ model: item.target.model });
+        const result = await models.warmup(item.alias);
         const fields = {
           alias: item.alias,
           provider: item.target.provider,

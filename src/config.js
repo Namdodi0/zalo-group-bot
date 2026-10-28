@@ -351,10 +351,23 @@ export function loadConfig(input = {}) {
       maxTokens: /** @type {number} */ (readInt(env, 'CONTEXT_MAX_TOKENS', 0, { min: 0 })),
       maxMessages: /** @type {number} */ (readInt(env, 'CONTEXT_MAX_MESSAGES', 0, { min: 0 })),
       maxCharsPerMessage: /** @type {number} */ (readInt(env, 'CONTEXT_MAX_CHARS_PER_MESSAGE', 12000, { min: 0 })),
-      maxImages: /** @type {number} */ (readInt(env, 'CONTEXT_MAX_IMAGES', 2, { min: 1, max: 20 })),
       ttlHours: /** @type {number} */ (readInt(env, 'CONTEXT_TTL_HOURS', 72, { min: 0 })),
       // ttlHours = 0 → không bao giờ tự xoá context
       summary: readBool(env, 'CONTEXT_SUMMARY', true),
+      // 0 = chưa biết context window → chỉ compaction khi provider báo overflow
+      modelWindow: /** @type {number} */ (readInt(env, 'CONTEXT_MODEL_WINDOW', 0, { min: 0 })),
+      compactThreshold: (() => {
+        const raw = readStr(env, 'CONTEXT_COMPACT_THRESHOLD');
+        if (!raw) return 0.8;
+        const value = Number(raw);
+        if (!Number.isFinite(value) || value <= 0 || value > 1) {
+          throw new ConfigError(`CONTEXT_COMPACT_THRESHOLD phải trong khoảng (0, 1] (nhận: "${raw}")`);
+        }
+        return value;
+      })(),
+      keepRecent: /** @type {number} */ (readInt(env, 'CONTEXT_KEEP_RECENT', 8, { min: 1 })),
+      summaryMaxChars: /** @type {number} */ (readInt(env, 'CONTEXT_SUMMARY_MAX_CHARS', 1200, { min: 100 })),
+      toolResultKeepChars: /** @type {number} */ (readInt(env, 'CONTEXT_TOOL_RESULT_KEEP_CHARS', 600, { min: 0 })),
     },
     search: {
       enabled: searchEnabled,

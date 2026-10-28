@@ -5,7 +5,7 @@ import path from 'node:path';
 import { VERSION, readVersion, __test__ as versionTest } from '../src/version.js';
 import { createLogger } from '../src/logger.js';
 import { createMetrics } from '../src/metrics.js';
-import { __test__ as nimTest } from '../src/ai/nim.js';
+import { __test__ as nimTest } from '../src/ai/llm/adapter-openai.js';
 import { loadConfig } from '../src/config.js';
 
 const pkg = JSON.parse(fs.readFileSync(path.join(import.meta.dirname, '..', 'package.json'), 'utf8'));

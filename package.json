@@ -8,11 +8,11 @@
     "node": ">=20.6"
   },
   "scripts": {
-    "start": "node --env-file-if-exists=.env src/index.js",
-    "dev": "node --env-file-if-exists=.env --watch src/index.js",
-    "webhook": "node --env-file-if-exists=.env src/index.js --mode webhook",
-    "smoke": "node --env-file-if-exists=.env scripts/smoke.js",
-    "simulate": "node --env-file-if-exists=.env scripts/simulate.js",
+    "start": "node src/index.js",
+    "dev": "node --watch src/index.js",
+    "webhook": "node src/index.js --mode webhook",
+    "smoke": "node scripts/smoke.js",
+    "simulate": "node scripts/simulate.js",
     "pack": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/pack.ps1",
     "test": "node --test",
     "typecheck": "tsc -p tsconfig.json"

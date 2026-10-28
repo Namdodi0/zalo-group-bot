@@ -1,3 +1,5 @@
+import { latestSummary } from '../context/record.js';
+import { createTokenMeter } from '../context/token-meter.js';
 import { formatDuration } from '../text/format.js';
 
 /**
@@ -13,10 +15,10 @@ export function parseCommand(text) {
 }
 
 /**
- * @param {{config: any, store: ReturnType<typeof import('../context/store.js').createContextStore>, metrics: ReturnType<typeof import('../metrics.js').createMetrics>, zalo: ReturnType<typeof import('../zalo/client.js').createZaloClient>, http: ReturnType<typeof import('../http.js').createHttp>, models: ReturnType<typeof import('../ai/router.js').createModelRouter>, stickers?: ReturnType<typeof import('../ai/stickers.js').createStickerStore>, logger?: import('../logger.js').Logger}} deps
+ * @param {{config: any, store: ReturnType<typeof import('../context/store.js').createContextStore>, metrics: ReturnType<typeof import('../metrics.js').createMetrics>, zalo: ReturnType<typeof import('../zalo/client.js').createZaloClient>, http: ReturnType<typeof import('../http.js').createHttp>, models: ReturnType<typeof import('../ai/router.js').createModelRouter>, stickers?: ReturnType<typeof import('../ai/stickers.js').createStickerStore>, logger?: import('../logger.js').Logger, compaction?: ReturnType<typeof import('../context/compaction/engine.js').createCompactionEngine>}} deps
  */
 export function createCommands(deps) {
-  const { config, store, metrics, zalo, models } = deps;
+  const { config, store, metrics, zalo, models, compaction } = deps;
   const http = deps.http;
   const stickers = deps.stickers;
   const logger = deps.logger;
@@ -34,6 +36,7 @@ export function createCommands(deps) {
       '• `/status` — trạng thái bot, context, độ trễ',
       '• `/id` — id của chat hiện tại',
       '• `/reset` — xoá ngữ cảnh của chat này (giữ model/tone); `/reset all` xoá cả cài đặt',
+      '• `/compact` — nén context ngay (admin)',
       '• `/search <câu hỏi>` — bắt buộc tìm web cho câu hỏi',
       '• `/image <từ khoá>` — tìm và gửi ảnh',
       '• `/sticker [cảm xúc]` — gửi sticker; `/sticker add <id> [tên]` để thêm ID',
@@ -73,6 +76,9 @@ export function createCommands(deps) {
     const contextStore = `• Lưu context: \`${config.context.dir}\`${
       contextFiles === null ? '' : ` · ${contextFiles} file`
     } · TTL ${config.context.ttlHours > 0 ? `${config.context.ttlHours}h` : 'không xoá'}`;
+    const estimated = createTokenMeter().messages(record?.messages ?? []);
+    const window = Number(current.contextWindow ?? config.context.modelWindow ?? 0);
+    const pressure = `• Context pressure: ~${estimated} token${window > 0 ? ` / ${window} (${Math.round((estimated / window) * 100)}%)` : ' (chưa biết context window)'}`;
 
     /** @type {string[]} */
     const lines = [
@@ -81,8 +87,10 @@ export function createCommands(deps) {
       `• Mode: ${config.mode} · Reasoning: ${config.ai.reasoning} (chat này: ${thinking})`,
       `• max_tokens: ${config.ai.maxTokens ?? 'không giới hạn'}`,
       `• Uptime: ${formatDuration(snapshot.uptimeSec * 1000)} · bot v${config.version ?? '?'}`,
-      `• Context: ${messages} tin · ${record?.turns ?? 0} lượt · ngân sách: ${contextBudget} · tóm tắt: ${record?.summary ? 'có' : 'chưa'}`,
-      contextStore,      `• Giới hạn tin trả lời: ${replyLimit}`,
+      `• Context: ${messages} tin · ${record?.turns ?? 0} lượt · ngân sách: ${contextBudget} · tóm tắt: ${latestSummary(record) ? 'có' : 'chưa'}`,
+      pressure,
+      contextStore,
+      `• Giới hạn tin trả lời: ${replyLimit}`,
       `• Độ trễ LLM: p50 ${nimLatency ? `${nimLatency.p50}ms` : 'n/a'} · p95 ${nimLatency ? `${nimLatency.p95}ms` : 'n/a'}${generationSpeed > 0 ? ` · ~${generationSpeed} tok/s` : ''}`,
       `• Phản hồi: p50 ${replyLatency ? `${replyLatency.p50}ms` : 'n/a'} · p95 ${replyLatency ? `${replyLatency.p95}ms` : 'n/a'}`,
       `• Tin nhận: ${count('messages.in')} · Đã trả lời: ${count('messages.replied')} · Lỗi: ${count('messages.error')}`,
@@ -143,6 +151,23 @@ export function createCommands(deps) {
 
       case 'status':
         return { kind: 'text', text: await statusText(ctx, ctx.record) };
+
+      case 'compact': {
+        if (!canManage(ctx)) return { kind: 'text', text: 'Chỉ admin của group mới được nén context.' };
+        if (!compaction) return { kind: 'text', text: 'Compaction chưa được cấu hình.' };
+        const meter = createTokenMeter();
+        const before = meter.messages(ctx.record.messages);
+        const result = await compaction.compactIfNeeded({ record: ctx.record, trigger: 'manual' });
+        if (!result?.changed) {
+          return { kind: 'text', text: 'Context chưa cần nén (không còn range an toàn để nén).' };
+        }
+        store.touch?.(ctx.chatId);
+        const after = meter.messages(ctx.record.messages);
+        const parts = [];
+        if (result.summarized) parts.push('tóm tắt');
+        if (result.pruned) parts.push('rút gọn tool result');
+        return { kind: 'text', text: `Đã nén context (${parts.join(', ')}) — ~${before} → ~${after} token.` };
+      }
 
       case 'search': {
         if (!args) return { kind: 'text', text: 'Dùng: `/search <câu hỏi>`' };
@@ -379,7 +404,6 @@ export function createCommands(deps) {
                 role: 'assistant',
                 text,
                 ts: Date.now(),
-                imageUrl: null,
               });
             }
           } catch (error) {

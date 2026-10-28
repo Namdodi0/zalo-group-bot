@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { DEEPSEEK_REASONING_MAP, createLlmClient } from '../src/ai/nim.js';
+import { DEEPSEEK_REASONING_MAP, createOpenAiCompatAdapter } from '../src/ai/llm/adapter-openai.js';
 import { createSilentLogger } from '../src/logger.js';
 
 const logger = createSilentLogger();
@@ -25,7 +25,7 @@ const standardResponse = {
 };
 
 function makeClient(http, overrides = {}) {
-  return createLlmClient({
+  return createOpenAiCompatAdapter({
     provider: 'nim',
     apiKey: 'k',
     baseUrl: 'https://nim.test/v1',

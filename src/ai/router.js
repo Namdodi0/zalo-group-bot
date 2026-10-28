@@ -1,4 +1,4 @@
-import { DEFAULT_ALIAS, FALLBACK_ALIAS, MODEL_ALIASES } from './models.js';
+import { createModelCatalog } from './llm/catalog.js';
 
 /**
  * Router chọn provider/model theo chat.
@@ -6,80 +6,45 @@ import { DEFAULT_ALIAS, FALLBACK_ALIAS, MODEL_ALIASES } from './models.js';
  * - Chat có `meta.model` (do /model đặt) thì dùng alias đó
  * - Fallback: config.model.fallbackAlias
  *
- * @param {{config: any, clients: Record<string, any>, logger?: import('../logger.js').Logger}} options
+ * @param {{config: any, service: ReturnType<typeof import('./llm/service.js').createLlmService>, logger?: import('../logger.js').Logger}} options
  */
 export function createModelRouter(options) {
   const config = options.config;
-  const clients = options.clients;
+  const service = options.service;
   const logger = options.logger;
 
-  /** @type {Record<string, {alias: string, provider: string, model: string, label: string}>} */
-  const registry = {};
-  for (const [alias, meta] of Object.entries(MODEL_ALIASES)) {
-    const client = clients[meta.provider];
-    if (!client) continue;
-    const providerConfig = config[meta.provider] ?? {};
-    const model = providerConfig[meta.modelKey];
-    if (!model) continue;
-    registry[alias] = { alias, provider: meta.provider, model, label: meta.label };
-  }
-
-  const defaultAlias = registry[config.model?.defaultAlias ?? DEFAULT_ALIAS]
-    ? config.model?.defaultAlias ?? DEFAULT_ALIAS
-    : Object.keys(registry)[0];
-  if (!defaultAlias) throw new Error('Không có model nào khả dụng (thiếu API key?)');
-
-  let fallbackAlias = config.model?.fallbackAlias ?? FALLBACK_ALIAS;
-  if (!registry[fallbackAlias] || fallbackAlias === defaultAlias) {
-    fallbackAlias = Object.keys(registry).find((alias) => alias !== defaultAlias) ?? defaultAlias;
-  }
+  const catalog = createModelCatalog({ config, availableProviders: service.providers() });
+  const defaultAlias = catalog.defaultAlias;
+  const fallbackAlias = catalog.fallbackAlias;
 
   logger?.debug('model router ready', {
     default: defaultAlias,
     fallback: fallbackAlias,
-    available: Object.keys(registry),
+    available: catalog.list().map((item) => item.alias),
   });
-
-  /** @param {string} alias */
-  function targetFor(alias) {
-    return registry[alias] ?? null;
-  }
 
   /** @param {any} record */
   function resolve(record) {
-    const wanted = record?.meta?.model;
-    return (wanted && registry[wanted]) || registry[defaultAlias];
+    return catalog.resolve(record);
   }
 
   /** @param {string} input */
   function find(input) {
-    const needle = String(input ?? '').trim().toLowerCase();
-    if (!needle) return null;
-    if (registry[needle]) return registry[needle];
-    // cho phép chọn theo tên provider ("deepseek", "nim")
-    for (const item of Object.values(registry)) {
-      if (item.provider === needle) return item;
-    }
-    for (const item of Object.values(registry)) {
-      if (item.label.toLowerCase().includes(needle) || item.model.toLowerCase().includes(needle)) return item;
-    }
-    return null;
+    return catalog.find(input);
   }
 
   function list() {
-    return Object.values(registry);
+    return catalog.list();
   }
 
   /**
-   * @param {string | {alias: string, provider: string, model: string, label: string}} selection
+   * @param {string | {alias: string}} selection
    * @param {any} input
    */
   async function chatWith(selection, input) {
     const target = typeof selection === 'string' ? find(selection) : selection;
-    const picked = target && registry[target.alias] ? target : resolve(null);
-    const client = clients[picked.provider];
-    if (!client) throw new Error(`provider "${picked.provider}" chưa được cấu hình`);
-    return client.chat({ ...input, model: picked.model });
+    const entry = (target?.alias && catalog.specFor(target.alias)) || resolve(null);
+    return service.chat({ ...input, provider: entry.provider, model: entry.model });
   }
 
   /**
@@ -91,13 +56,25 @@ export function createModelRouter(options) {
     return chatWith(target, rest);
   }
 
+  /**
+   * @param {string} alias
+   * @param {{timeoutMs?: number}} [warmupOptions]
+   */
+  async function warmup(alias, warmupOptions = {}) {
+    const entry = find(alias);
+    if (!entry) return { ok: false, ms: 0, model: '', error: `Không có model "${alias}"` };
+    return service.warmup(entry.provider, { ...warmupOptions, model: entry.model });
+  }
+
   return {
     chat,
     chatWith,
     resolve,
     find,
     list,
-    registry,
+    registry: catalog.entries,
+    catalog,
+    warmup,
     defaultAlias,
     get fallbackAlias() {
       return fallbackAlias;
