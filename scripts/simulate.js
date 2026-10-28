@@ -10,6 +10,7 @@ import path from 'node:path';
 import { createAgent } from '../src/ai/agent.js';
 import { DEEPSEEK_REASONING_MAP, NIM_REASONING_MAP, createOpenAiCompatAdapter } from '../src/ai/llm/adapter-openai.js';
 import { createLlmService } from '../src/ai/llm/service.js';
+import { createReminderStore } from '../src/ai/reminders.js';
 import { createModelRouter } from '../src/ai/router.js';
 import { createStickerStore } from '../src/ai/stickers.js';
 import { createSummarizer } from '../src/ai/summarize.js';
@@ -122,6 +123,13 @@ await stickers.load();
 const summarize = createSummarizer({ llm: models, logger });
 const compaction = createCompactionEngine({ config, logger, metrics, summarize });
 const tools = createToolRuntime({ config, tavily, zalo, validator, stickers, logger, metrics });
+const reminders = createReminderStore({
+  file: null,
+  send: async (chatId, text) => console.log(`
+[REMINDER → ${chatId}]
+${text}`),
+  logger,
+});
 const commands = createCommands({
   config,
   store,
@@ -130,6 +138,7 @@ const commands = createCommands({
   http: httpClient,
   models,
   stickers,
+  reminders,
   logger,
   compaction,
 });

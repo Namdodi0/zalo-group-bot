@@ -1,5 +1,6 @@
 import { assembleRequest } from '../context/assembler.js';
 import {
+  factsText,
   searchEntry,
   syncContexts,
   toolCallEntry,
@@ -343,7 +344,9 @@ export function createAgent(deps) {
 
     // Runtime context (time...) comes from the prompt registry and is materialized
     // as durable user messages — refreshed every turn, never mutating the user turn.
-    syncContexts(record, promptAssembly.contexts);
+    // Pinned facts live in meta (compaction-proof) and are re-injected the same way.
+    const facts = factsText(record);
+    syncContexts(record, facts ? [{ name: 'facts', text: facts }, ...promptAssembly.contexts] : promptAssembly.contexts);
     store.touch(event.chatId);
 
     const buildAll = () =>

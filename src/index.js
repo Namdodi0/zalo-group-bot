@@ -1,7 +1,9 @@
 import http from 'node:http';
+import path from 'node:path';
 import { createAgent } from './ai/agent.js';
 import { DEEPSEEK_REASONING_MAP, NIM_REASONING_MAP, createOpenAiCompatAdapter } from './ai/llm/adapter-openai.js';
 import { createLlmService } from './ai/llm/service.js';
+import { createReminderStore } from './ai/reminders.js';
 import { createModelRouter } from './ai/router.js';
 import { createSummarizer } from './ai/summarize.js';
 import { createStickerStore } from './ai/stickers.js';
@@ -143,6 +145,11 @@ async function main() {
   const validator = createImageValidator({ logger, timeoutMs: 4000 });
   const stickers = createStickerStore({ file: config.sticker.file, extraIds: config.sticker.extraIds, logger });
   await stickers.load();
+  const reminders = createReminderStore({
+    file: path.join(config.dataDir, 'reminders.json'),
+    send: (chatId, text) => zalo.sendMessage(chatId, text),
+    logger,
+  });
   const summarize = createSummarizer({ llm: models, logger });
   const compaction = createCompactionEngine({ config, logger, metrics, summarize });
   const tools = createToolRuntime({ config, tavily, zalo, validator, stickers, logger, metrics });
@@ -154,6 +161,7 @@ async function main() {
     http: httpClient,
     models,
     stickers,
+    reminders,
     logger,
     compaction,
   });
@@ -248,6 +256,9 @@ async function main() {
   const controller = new AbortController();
   /** @type {Array<() => Promise<void>|void>} */
   const cleanups = [];
+  await reminders.load();
+  reminders.start();
+  cleanups.push(() => reminders.stop());
   /** @type {Promise<void>|null} */
   let shutdownPromise = null;
 

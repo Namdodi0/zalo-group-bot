@@ -247,3 +247,54 @@ test('an unknown command returns guidance', async () => {
   const result = await commands.run({ name: 'abc', args: '' }, ctx(d));
   assert.match(result.text, /Unknown command/);
 });
+
+test('/remember stores a fact and /forget removes it', async () => {
+  const d = deps();
+  const commands = createCommands(d);
+  const context = ctx(d);
+
+  let result = await commands.run({ name: 'remember', args: 'Tên tôi là Nam' }, context);
+  assert.match(result.text, /Đã ghi nhớ/);
+  assert.equal(context.record.meta.facts.length, 1);
+
+  result = await commands.run({ name: 'remember', args: 'Tên tôi là Nam' }, context);
+  assert.match(result.text, /đã được ghi nhớ/);
+
+  result = await commands.run({ name: 'forget', args: '1' }, context);
+  assert.match(result.text, /Đã quên/);
+  assert.equal(context.record.meta.facts.length, 0);
+});
+
+test('/remind parses the time and stores a reminder', async () => {
+  const d = deps();
+  /** @type {any[]} */
+  const added = [];
+  d.reminders = {
+    list: () => [],
+    add: async (input) => {
+      added.push(input);
+      return { ok: true, item: { id: 7, at: input.at, text: input.text } };
+    },
+    remove: async () => null,
+  };
+  const commands = createCommands(d);
+  const result = await commands.run({ name: 'remind', args: '+10m uống nước' }, ctx(d));
+  assert.match(result.text, /Đã đặt nhắc #7/);
+  assert.equal(added[0].text, 'uống nước');
+  assert.ok(added[0].at > Date.now());
+});
+
+test('/remind lists and removes reminders', async () => {
+  const d = deps();
+  const item = { id: 1, at: Date.now() + 60_000, text: 'họp' };
+  d.reminders = {
+    list: () => [item],
+    add: async () => ({ ok: false, reason: 'chat-limit' }),
+    remove: async (_chatId, id) => (String(id) === '1' ? item : null),
+  };
+  const commands = createCommands(d);
+  let result = await commands.run({ name: 'remind', args: 'list' }, ctx(d));
+  assert.match(result.text, /họp/);
+  result = await commands.run({ name: 'remind', args: 'remove 1' }, ctx(d));
+  assert.match(result.text, /Đã xoá nhắc #1/);
+});

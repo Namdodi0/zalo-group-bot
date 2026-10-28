@@ -1,6 +1,7 @@
-import { latestSummary } from '../context/record.js';
+import { addFact, clearFacts, latestSummary, MAX_FACTS, removeFact } from '../context/record.js';
 import { createTokenMeter } from '../context/token-meter.js';
 import { formatDuration } from '../text/format.js';
+import { REMINDER_LIMITS, formatReminderTime, parseReminderArgs } from '../ai/reminders.js';
 
 /**
  * @param {string} text
@@ -15,12 +16,13 @@ export function parseCommand(text) {
 }
 
 /**
- * @param {{config: any, store: ReturnType<typeof import('../context/store.js').createContextStore>, metrics: ReturnType<typeof import('../metrics.js').createMetrics>, zalo: ReturnType<typeof import('../zalo/client.js').createZaloClient>, http: ReturnType<typeof import('../http.js').createHttp>, models: ReturnType<typeof import('../ai/router.js').createModelRouter>, stickers?: ReturnType<typeof import('../ai/stickers.js').createStickerStore>, logger?: import('../logger.js').Logger, compaction?: ReturnType<typeof import('../context/compaction/engine.js').createCompactionEngine>}} deps
+ * @param {{config: any, store: ReturnType<typeof import('../context/store.js').createContextStore>, metrics: ReturnType<typeof import('../metrics.js').createMetrics>, zalo: ReturnType<typeof import('../zalo/client.js').createZaloClient>, http: ReturnType<typeof import('../http.js').createHttp>, models: ReturnType<typeof import('../ai/router.js').createModelRouter>, stickers?: ReturnType<typeof import('../ai/stickers.js').createStickerStore>, reminders?: ReturnType<typeof import('../ai/reminders.js').createReminderStore>, logger?: import('../logger.js').Logger, compaction?: ReturnType<typeof import('../context/compaction/engine.js').createCompactionEngine>}} deps
  */
 export function createCommands(deps) {
   const { config, store, metrics, zalo, models, compaction } = deps;
   const http = deps.http;
   const stickers = deps.stickers;
+  const reminders = deps.reminders;
   const logger = deps.logger;
 
   function canManage(ctx) {
@@ -40,6 +42,8 @@ export function createCommands(deps) {
       '• `/search <question>` — force a web search for the question',
       '• `/image <keywords>` — find and send an image',
       '• `/sticker [mood]` — send a sticker; `/sticker add <id> [name]` to add an ID',
+      '• `/remind <time> <text>` — set a reminder (e.g. `/remind 20:00 mai họp nhóm`)',
+      '• `/remember <fact>` — pin a fact the bot must not forget; `/forget <n|text|all>`',
       '• `/model` — view/change the model for this chat',
       '• `/tone` — view/change the tone (roast = snarky)',
       '• `/think on|off|low|high` — turn reasoning on/off for this chat',
@@ -61,6 +65,7 @@ export function createCommands(deps) {
     const replyLatency = snapshot.latency['agent.reply'];
     const count = (name) => snapshot.counters[name] ?? 0;
     const messages = record?.messages?.length ?? 0;
+    const factsCount = Array.isArray(record?.meta?.facts) ? record.meta.facts.length : 0;
     const thinking = record?.meta?.thinking ?? 'per config';
     const current = models.resolve(record);
     const contextBudget =
@@ -87,7 +92,7 @@ export function createCommands(deps) {
       `• Mode: ${config.mode} · Reasoning: ${config.ai.reasoning} (this chat: ${thinking})`,
       `• max_tokens: ${config.ai.maxTokens ?? 'unlimited'}`,
       `• Uptime: ${formatDuration(snapshot.uptimeSec * 1000)} · bot v${config.version ?? '?'}`,
-      `• Context: ${messages} msg · ${record?.turns ?? 0} turns · budget: ${contextBudget} · summary: ${latestSummary(record) ? 'yes' : 'no'}`,
+      `• Context: ${messages} msg · ${record?.turns ?? 0} turns · ${factsCount} facts · budget: ${contextBudget} · summary: ${latestSummary(record) ? 'yes' : 'no'}`,
       pressure,
       contextStore,
       `• Reply limit: ${replyLimit}`,
@@ -139,6 +144,8 @@ export function createCommands(deps) {
         }
         const full = args.trim().toLowerCase() === 'all';
         const turns = ctx.record?.turns ?? 0;
+        // Facts are memory, not settings: a normal /reset forgets them too.
+        if (!full && Array.isArray(ctx.record?.meta?.facts)) ctx.record.meta.facts = [];
         await store.reset(ctx.chatId, { keepMeta: !full });
         logger?.info('context reset', { chatId: ctx.chatId, turns, full });
         return {
@@ -341,6 +348,127 @@ export function createCommands(deps) {
           return { kind: 'text', text: 'Back to the reasoning mode from the config.' };
         }
         return { kind: 'text', text: 'Invalid value. Use `/think off|low|high|auto`.' };
+      }
+
+      case 'remember': {
+        if (!canManage(ctx)) {
+          return { kind: 'text', text: 'Only group admins can change what the bot remembers.' };
+        }
+        const text = args.trim();
+        if (!text) {
+          const facts = Array.isArray(ctx.record?.meta?.facts) ? ctx.record.meta.facts : [];
+          if (!facts.length) {
+            return { kind: 'text', text: 'Chưa có ghi nhớ nào. Dùng `/remember <nội dung>`.' };
+          }
+          return {
+            kind: 'text',
+            text: [
+              `**Ghi nhớ của chat này** (${facts.length}/${MAX_FACTS})`,
+              ...facts.map((fact, index) => `${index + 1}. ${fact.text}`),
+              '',
+              'Xoá bằng `/forget <số|từ khoá>` hoặc `/forget all`.',
+            ].join('\n'),
+          };
+        }
+        const result = addFact(ctx.record, text);
+        if (!result.added) {
+          const message =
+            result.reason === 'duplicate'
+              ? 'Điều này đã được ghi nhớ rồi.'
+              : result.reason === 'full'
+                ? `Đã đạt giới hạn ${MAX_FACTS} ghi nhớ — xoá bớt bằng \`/forget\`.`
+                : 'Nội dung ghi nhớ trống.';
+          return { kind: 'text', text: message };
+        }
+        store.touch?.(ctx.chatId);
+        return { kind: 'text', text: `Đã ghi nhớ: ${/** @type {any} */ (result.fact).text}` };
+      }
+
+      case 'forget': {
+        if (!canManage(ctx)) {
+          return { kind: 'text', text: 'Only group admins can change what the bot remembers.' };
+        }
+        const target = args.trim();
+        if (!target) {
+          return { kind: 'text', text: 'Dùng `/forget <số|từ khoá>` hoặc `/forget all`.' };
+        }
+        if (target.toLowerCase() === 'all') {
+          const count = clearFacts(ctx.record);
+          if (!count) return { kind: 'text', text: 'Không có ghi nhớ nào để xoá.' };
+          store.touch?.(ctx.chatId);
+          return { kind: 'text', text: `Đã xoá ${count} ghi nhớ.` };
+        }
+        const removed = removeFact(ctx.record, target);
+        if (!removed) {
+          return { kind: 'text', text: `Không tìm thấy ghi nhớ "${target}".` };
+        }
+        store.touch?.(ctx.chatId);
+        return { kind: 'text', text: `Đã quên: ${removed.text}` };
+      }
+
+      case 'remind': {
+        if (!reminders) {
+          return { kind: 'text', text: 'Reminders are not configured.' };
+        }
+        const raw = args.trim();
+        const lower = raw.toLowerCase();
+        const listText = () => {
+          const items = reminders
+            .list(ctx.chatId)
+            .slice()
+            .sort((a, b) => a.at - b.at);
+          if (!items.length) {
+            return `Chưa có nhắc hẹn nào trong chat này. Dùng \`/remind 20:00 mai họp nhóm\`.`;
+          }
+          return [
+            `**Nhắc hẹn của chat này** (${items.length}/${REMINDER_LIMITS.MAX_PER_CHAT})`,
+            ...items.map((item) => `• #${item.id} — ${formatReminderTime(item.at)} — ${item.text}`),
+            '',
+            'Xoá bằng `/remind remove <id>`.',
+          ].join('\n');
+        };
+
+        if (!raw || ['list', 'danh sách', 'danh sach'].includes(lower)) {
+          return { kind: 'text', text: listText() };
+        }
+
+        const cancel = /^(remove|cancel|xoa|xóa)(?:\s+|$)/i.exec(raw);
+        if (cancel) {
+          const target = raw.slice(cancel[0].length).trim();
+          if (!target) {
+            return { kind: 'text', text: 'Dùng `/remind remove <id>` (xem id bằng `/remind list`).' };
+          }
+          const removed = await reminders.remove(ctx.chatId, target);
+          return {
+            kind: 'text',
+            text: removed
+              ? `Đã xoá nhắc #${removed.id}: ${removed.text}`
+              : `Không tìm thấy nhắc "${target}" trong chat này.`,
+          };
+        }
+
+        const parsed = parseReminderArgs(raw);
+        if (parsed.error) return { kind: 'text', text: parsed.error };
+        const result = await reminders.add({
+          chatId: ctx.chatId,
+          text: /** @type {string} */ (parsed.text),
+          at: /** @type {number} */ (parsed.at),
+          createdBy: ctx.senderId,
+        });
+        if (!result.ok) {
+          const reason = /** @type {any} */ (result).reason;
+          return {
+            kind: 'text',
+            text:
+              reason === 'chat-limit'
+                ? `Chat này đã có tối đa ${REMINDER_LIMITS.MAX_PER_CHAT} nhắc hẹn — xoá bớt bằng \`/remind remove <id>\`.`
+                : 'Đã đạt giới hạn tổng số nhắc hẹn, thử lại sau.',
+          };
+        }
+        return {
+          kind: 'text',
+          text: `Đã đặt nhắc #${result.item.id} lúc ${formatReminderTime(result.item.at)}: ${result.item.text}`,
+        };
       }
 
       case 'split': {

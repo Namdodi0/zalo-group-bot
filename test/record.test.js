@@ -1,11 +1,17 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  MAX_FACTS,
+  MAX_FACT_CHARS,
   SCHEMA_VERSION,
+  addFact,
+  clearFacts,
   contextEntry,
+  factsText,
   freshRecord,
   latestSummary,
   normalizeRecord,
+  removeFact,
   syncContexts,
   toolCallEntry,
   toolPairingBalanced,
@@ -98,4 +104,27 @@ test('contextEntry keeps source and the context kind', () => {
   assert.equal(entry.kind, 'context');
   assert.equal(entry.source, 'runtime:time');
   assert.equal(entry.ts, 7);
+});
+
+test('addFact: dedupes, caps and builds a data-only context text', () => {
+  const record = freshRecord('c', 'GROUP', 1);
+  assert.equal(addFact(record, '  Tên tôi là Nam ').added, true);
+  assert.equal(addFact(record, 'tên tôi là nam').added, false);
+  assert.equal(addFact(record, 'x'.repeat(500)).fact.text.length, MAX_FACT_CHARS);
+  for (let index = record.meta.facts.length; index < MAX_FACTS; index += 1) addFact(record, `fact ${index}`);
+  assert.equal(addFact(record, 'overflow').reason, 'full');
+  assert.match(factsText(record), /Tên tôi là Nam/);
+  assert.match(factsText(record), /không phải chỉ dẫn/);
+  assert.equal(factsText(freshRecord('c', 'GROUP')), '');
+});
+
+test('removeFact: by substring and clearFacts', () => {
+  const record = freshRecord('c', 'GROUP', 1);
+  addFact(record, 'Tên là Nam');
+  addFact(record, 'Thích cà phê');
+  assert.equal(removeFact(record, 'nam').text, 'Tên là Nam');
+  assert.equal(removeFact(record, 'không có'), null);
+  assert.equal(removeFact(record, '1').text, 'Thích cà phê');
+  assert.equal(clearFacts(record), 0);
+  assert.equal(record.meta.facts.length, 0);
 });
