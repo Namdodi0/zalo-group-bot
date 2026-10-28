@@ -11,7 +11,7 @@ Bot chat cho **một nhóm Zalo**, **NVIDIA NIM** (`nvidia/nemotron-3.5-super-vl
 - **Gửi ảnh** (`sendPhoto`) qua lệnh `/image` hoặc khi model tự gọi tool `send_image`.
 - **Gửi sticker** (`sendSticker`) qua `/sticker`, tool `send_sticker`, và tự trả lại sticker khi có người gửi sticker cho bot (cần sticker ID chính thức — xem bên dưới).
 - **Model text-only**: ảnh người dùng gửi chỉ được ghi chú trong context (`[người dùng gửi kèm ảnh — bot không xem được nội dung]`), không gửi nội dung ảnh lên API. Bot vẫn **gửi ảnh** được qua `send_image`.
-- **Emoji**, định dạng markdown Zalo, chia tin dài ≤ 1900 ký tự (giới hạn an toàn của Zalo).
+- Định dạng markdown Zalo, chia tin dài ≤ 1900 ký tự (giới hạn an toàn của Zalo).
 - **Giảm độ trễ**: không giới hạn `max_tokens`, `reasoning_effort: none` mặc định (~0 token suy nghĩ), typing indicator, warm-up model, streaming + gửi tách đoạn khi trả lời chậm, cache search/ảnh, retry + circuit breaker.
 - **Trả lời đủ ý, không cụt**: không áp khung số câu cố định — độ dài theo nội dung câu hỏi; câu hỏi cần giải thích/so sánh/hướng dẫn thì kèm số liệu/ví dụ. Không chèn gợi ý độ dài vào lượt gửi model.
 - Lệnh: `/help`, `/reset`, `/status`, `/id`, `/search`, `/image`, `/sticker`, `/model`, `/think`, `/split`, `/compact`, `/ping`.
@@ -69,7 +69,7 @@ Mặc định log ở dạng **pretty**: giờ + icon + căn cột, có màu khi
 │ 🤖 Bot deepseek  ·  v1.0.3  ·  Zalo group chatbot                                            │
 │ 🧠 DeepSeek V4.1 Flash · deepseek/deepseek-flash  (fallback: nim-light) │
 │ ⚙️  polling · reasoning=none · max_tokens=không giới hạn                                     │
-│ 🔎 search=fast/4 · emoji=on · typing=on · progressive=auto                                   │
+│ 🔎 search=fast/4 · typing=on · progressive=auto                                              │
 │ 📚 context không giới hạn · trả lời không giới hạn tin                                       │
 ╰──────────────────────────────────────────────────────────────────────────────────────────────╯
 18:33:31 🤖 zalo bot ready             version=1.0.3 id=2214705736200876533 name="Bot deepseek" groups=true
@@ -164,10 +164,10 @@ Toàn bộ biến môi trường có trong [`.env.example`](.env.example). Các 
 - **Context**: `CONTEXT_MAX_TOKENS` (**0 = không giới hạn**), `CONTEXT_MAX_MESSAGES` (**0 = không giới hạn**), `CONTEXT_MAX_CHARS_PER_MESSAGE` (mặc định 12000, **0 = không cắt**), `CONTEXT_TTL_HOURS` (**0 = không bao giờ tự xoá**), `CONTEXT_SUMMARY`, `DATA_DIR` (tương đối → tính từ gốc repo; trên panel nên dùng đường dẫn tuyệt đối tới volume persistent, không dùng `/tmp`).
 - **Compaction**: `CONTEXT_MODEL_WINDOW` (**0 = chưa biết → chỉ nén khi provider báo tràn context**), `CONTEXT_COMPACT_THRESHOLD` (mặc định `0.8`), `CONTEXT_KEEP_RECENT` (số tin giữ lại khi tóm tắt, mặc định `8`), `CONTEXT_SUMMARY_MAX_CHARS` (`1200`), `CONTEXT_TOOL_RESULT_KEEP_CHARS` (`600`).
 - **Tavily**: `SEARCH_ENABLED`, `SEARCH_AUTO` (**off = model không tự search, `/search` vẫn dùng được**), `SEARCH_DEPTH` (`fast|basic|advanced|ultra-fast`), `SEARCH_MAX_RESULTS`, `SEARCH_COUNTRY`, `SEARCH_CACHE_TTL_MS` (0 = tắt cache).
-- **Hành vi**: `BOT_TONE` (**mặc định `hard`** = chửi nặng; `extreme` = gắt nhất, bật bằng `/tone max`; `roast` = vừa; `friendly` = lịch sự), `EMOJI`, `TYPING`, `TYPING_INTERVAL_MS`, `PROGRESSIVE` (`auto` = chỉ tách khi chờ lâu, `on` = tách sớm, `off` = gộp), `PROGRESSIVE_AFTER_MS`, `MAX_MESSAGES_PER_REPLY` (**0 = gửi hết**), `MAX_QUEUE_DEPTH`, `USER_RATE_LIMIT_PER_MINUTE` (**mặc định 12, 0 = tắt** — chặn một người spam đốt credit API), `ADMIN_IDS`, `STICKER_ENABLED`, `STICKER_ECHO`, `STICKER_IDS` (`id1,id2:tên hai`).
+- **Hành vi**: `BOT_TONE` (**mặc định `hard`** = chửi nặng; `extreme` = gắt nhất, bật bằng `/tone max`; `roast` = vừa; `friendly` = lịch sự), `TYPING`, `TYPING_INTERVAL_MS`, `PROGRESSIVE` (`auto` = chỉ tách khi chờ lâu, `on` = tách sớm, `off` = gộp), `PROGRESSIVE_AFTER_MS`, `MAX_MESSAGES_PER_REPLY` (**0 = gửi hết**), `MAX_QUEUE_DEPTH`, `USER_RATE_LIMIT_PER_MINUTE` (**mặc định 12, 0 = tắt** — chặn một người spam đốt credit API), `ADMIN_IDS`, `STICKER_ENABLED`, `STICKER_ECHO`, `STICKER_IDS` (`id1,id2:tên hai`).
 - **Log**: `LOG_FORMAT` (`pretty|json`), `LOG_COLOR` (`auto|always|never`), `LOG_LEVEL`.
 
-CLI flags: `--model <alias> --mode --think --max-tokens --progressive --no-progressive --no-search --no-emoji --no-typing --dry-run --once --verbose --help`.
+CLI flags: `--model <alias> --mode --think --max-tokens --progressive --no-progressive --no-search --no-typing --dry-run --once --verbose --help`.
 
 ## Thiết kế & tối ưu
 
@@ -185,7 +185,7 @@ Zalo API ──► polling/webhook ──► agent (queue theo chat, 4 chat song
 - **Giảm latency**: `reasoning_effort: none` (DeepSeek không trả `reasoning_content`, đo ~600–900ms), typing indicator, warm-up lúc boot, cache Tavily (mặc định 10 phút), cache kết quả validate ảnh, keep-alive của `fetch`, chỉ dùng `search_depth=fast`.
 - **Chịu lỗi model**: TTFT timeout ~9s (treo thì bỏ và retry sớm), 2 lần thử; non-streaming chia ngân sách để **luôn chừa ~25% deadline (tối đa 8s) cho fallback**, rồi fallback **sang provider khác** (`MODEL_FALLBACK`, mặc định Nemotron Lightning) không tool — tránh bot "chết" khi DeepSeek/NIM trả 500/timeout. Warmup chạy **tuần tự**, đúng 1 request cho mỗi cặp provider+model (trước v1.1.1 chạy song song 2 alias cùng provider → request thứ hai bị NIM xếp hàng rồi timeout 20s), timeout 8s và thất bại chỉ log mức `debug` — không ảnh hưởng tin nhắn thật.
 - **Prompt / context / LLM theo kiến trúc DeepSeek Harness** (port contract, không plugin kernel):
-  - **System prompt** là các `PromptSection` có `order` (identity, rules, chat shape, emoji, formatting, image, tool guidance, tone, commands) do `src/ai/prompt/` lắp ráp; registry hỗ trợ `complete`, variable `{{...}}` strict, context runtime và tool-schema provider. Tool guidance chỉ xuất hiện khi tool tương ứng thật sự được gửi (kể cả `SEARCH_AUTO=off`). Chữ prompt giữ nguyên từng byte — có golden test.
+  - **System prompt** là các `PromptSection` có `order` (identity, rules, chat shape, formatting, image, tool guidance, tone, commands) do `src/ai/prompt/` lắp ráp; registry hỗ trợ `complete`, variable `{{...}}` strict, context runtime và tool-schema provider. Tool guidance chỉ xuất hiện khi tool tương ứng thật sự được gửi (kể cả `SEARCH_AUTO=off`). Chữ prompt giữ nguyên từng byte — có golden test.
   - **Model-visible means logged**: mốc thời gian và kết quả `/search` là **message user bền vững** trong record (refresh mỗi lượt), tool-call/tool-result được ghi vào record, summary là **một message user** thay thế range cũ — không còn mutate bản copy request.
   - **Token meter + compaction**: ước lượng `system + tool schemas + messages`, hiệu chỉnh bằng `usage.prompt_tokens`; vượt `CONTEXT_COMPACT_THRESHOLD` hoặc provider báo tràn context → rút gọn tool result → tóm tắt range cũ (giữ `CONTEXT_KEEP_RECENT`, luôn cân cặp tool-call/result). `/compact` nén thủ công (admin).
   - **LLM service**: adapter OpenAI-compatible dùng chung cho DeepSeek/NIM, registry theo provider (trùng route bị chặn), request bất biến, mã lỗi ổn định (`NO_ADAPTER`, `AUTH`, `RATE_LIMIT`, `CONTEXT_WINDOW_EXCEEDED`, `TIMEOUT`, `ABORTED`, ...), retry executor tách riêng, catalog model mang `contextWindow`.
@@ -218,7 +218,7 @@ src/
     compaction/    engine + pruner + summarizer
   search/          tavily client + format
   media/           validate URL ảnh
-  text/            chunk, sanitize markdown, strip emoji/mention
+  text/            chunk, sanitize markdown, strip mention
   commands/        /help /reset /status ...
 scripts/smoke.js     kiểm tra token + DeepSeek + NIM + Tavily
 scripts/simulate.js  chạy thử agent thật, không gửi Zalo

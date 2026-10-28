@@ -37,7 +37,6 @@ function baseConfig(overrides = {}) {
     search: { enabled: true, auto: true, depth: 'fast', maxResults: 4, country: 'vietnam' },
     image: { enabled: true },
     sticker: { enabled: true },
-    emoji: true,
     ...overrides,
   };
 }

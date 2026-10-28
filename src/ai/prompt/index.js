@@ -6,7 +6,7 @@ export { createPromptRegistry } from './registry.js';
 
 /**
  * Dựng registry prompt của một lượt: section tĩnh + tool guidance + context runtime.
- * @param {{botName?: string, chatType?: string, emoji?: boolean, searchEnabled?: boolean, imageEnabled?: boolean, stickerEnabled?: boolean, tone?: string, tools?: any[]}} [options]
+ * @param {{botName?: string, chatType?: string, searchEnabled?: boolean, imageEnabled?: boolean, stickerEnabled?: boolean, tone?: string, tools?: any[]}} [options]
  */
 export function createZaloPrompt(options = {}) {
   const registry = createPromptRegistry();

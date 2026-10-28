@@ -6,7 +6,6 @@ import {
   normalizeWhitespace,
   prepareOutgoing,
   sanitizeZaloMarkdown,
-  stripEmoji,
   stripMention,
   truncate,
 } from '../src/text/format.js';
@@ -55,14 +54,9 @@ test('sanitizeZaloMarkdown chuyển link và bảng', () => {
   assert.equal(sanitizeZaloMarkdown('**đậm** và `code`'), '**đậm** và `code`');
 });
 
-test('stripEmoji bỏ emoji nhưng giữ tiếng Việt', () => {
-  assert.equal(stripEmoji('Chào bạn 😊👍'), 'Chào bạn');
-  assert.equal(stripEmoji('giá vàng tăng 🚀 5%'), 'giá vàng tăng 5%');
-});
-
-test('prepareOutgoing áp dụng parseMode và emoji', () => {
-  assert.equal(prepareOutgoing('[x](https://a.com) 😊', { emoji: false, parseMode: 'markdown' }), 'x (https://a.com)');
-  assert.equal(prepareOutgoing('[x](https://a.com)', { emoji: true, parseMode: 'none' }), '[x](https://a.com)');
+test('prepareOutgoing áp dụng parseMode', () => {
+  assert.equal(prepareOutgoing('[x](https://a.com) 😊', { parseMode: 'markdown' }), 'x (https://a.com) 😊');
+  assert.equal(prepareOutgoing('[x](https://a.com)', { parseMode: 'none' }), '[x](https://a.com)');
 });
 
 test('truncate và formatDuration', () => {

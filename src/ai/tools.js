@@ -162,7 +162,7 @@ export function createToolRuntime(options) {
           continue;
         }
         if (Date.now() > deadline) break;
-        const caption = String(args?.caption ?? '').trim() || (config.emoji ? `🖼️ ${query}` : query);
+        const caption = String(args?.caption ?? '').trim() || query;
         await zalo.sendPhoto(ctx.chatId, url, caption);
         metrics?.inc('tool.sendImage.ok');
         logger.info('image sent', { query, url, icon: '🖼️' });

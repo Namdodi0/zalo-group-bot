@@ -95,7 +95,7 @@ export function createCommands(deps) {
       `• Phản hồi: p50 ${replyLatency ? `${replyLatency.p50}ms` : 'n/a'} · p95 ${replyLatency ? `${replyLatency.p95}ms` : 'n/a'}`,
       `• Tin nhận: ${count('messages.in')} · Đã trả lời: ${count('messages.replied')} · Lỗi: ${count('messages.error')}`,
       `• Web search: ${config.search.enabled ? `${config.search.depth}/${config.search.maxResults} (auto: ${config.search.auto ? 'on' : 'off'})` : 'tắt'} · Ảnh: ${config.image.enabled ? 'bật' : 'tắt'}`,
-      `• Emoji: ${config.emoji ? 'bật' : 'tắt'} · Typing: ${config.typing ? 'bật' : 'tắt'} · Progressive: ${config.progressive}${record?.meta?.split ? ` (chat này: ${record.meta.split})` : ''}`,
+      `• Typing: ${config.typing ? 'bật' : 'tắt'} · Progressive: ${config.progressive}${record?.meta?.split ? ` (chat này: ${record.meta.split})` : ''}`,
       `• Chat: \`${ctx.chatId}\` (${ctx.chatType})`,
     ];
 

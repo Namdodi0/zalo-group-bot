@@ -6,7 +6,6 @@ function groupPrompt(overrides = {}) {
   return buildSystemPrompt({
     botName: 'Bot deepseek',
     chatType: 'GROUP',
-    emoji: true,
     searchEnabled: true,
     imageEnabled: true,
     stickerEnabled: true,
@@ -43,16 +42,6 @@ test('bắt buộc trả lời đúng câu hỏi, không né', () => {
   assert.match(prompt, /one short clarification/);
 });
 
-test('EMOJI: dày emoji khi bật, cấm emoji khi tắt', () => {
-  const on = groupPrompt({ emoji: true });
-  assert.match(on, /at least 4–8 per message/);
-  assert.match(on, /Never send a message without emojis/);
-
-  const off = groupPrompt({ emoji: false });
-  assert.match(off, /Never use emoji/);
-  assert.equal(off.includes('at least 4–8 per message'), false);
-});
-
 test('YANDERE MODE áp dụng cho mọi tone và mọi loại chat', () => {
   for (const tone of ['friendly', 'roast', 'roast-hard', 'roast-extreme', undefined]) {
     for (const chatType of ['GROUP', 'PRIVATE']) {
@@ -60,7 +49,6 @@ test('YANDERE MODE áp dụng cho mọi tone và mọi loại chat', () => {
         botName: 'Bot',
         chatType,
         tone,
-        emoji: true,
         searchEnabled: true,
         imageEnabled: true,
         stickerEnabled: true,
@@ -122,7 +110,6 @@ test('tool guidance bám đúng schema được gửi (SEARCH_AUTO=off thì khô
   const prompt = buildSystemPrompt({
     botName: 'Bot',
     chatType: 'GROUP',
-    emoji: true,
     imageEnabled: true,
     tools: [{ type: 'function', function: { name: 'send_sticker' } }],
   });
@@ -136,7 +123,6 @@ test('prompt thay đổi theo chat type và công cụ bật/tắt', () => {
 
   assert.equal(groupPrompt({ searchEnabled: false }).includes('web_search'), false);
   assert.equal(groupPrompt({ imageEnabled: false }).includes('send_image'), false);
-  assert.match(groupPrompt({ emoji: false }), /Never use emoji/);
 });
 
 test('prompt chứa tên bot nhận từ getMe', () => {

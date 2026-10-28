@@ -191,7 +191,6 @@ export function createAgent(deps) {
             }
           }
           const payload = prepareOutgoing(text, {
-            emoji: config.emoji,
             parseMode: config.zalo.parseMode,
           });
           if (!payload) return;
@@ -286,7 +285,6 @@ export function createAgent(deps) {
     const promptRegistry = createZaloPrompt({
       botName: zalo.displayName || 'trợ lý AI',
       chatType: event.chatType,
-      emoji: config.emoji,
       // Tool guidance chỉ hiện khi schema tương ứng thật sự được gửi lên model.
       tools: toolDefs,
       imageEnabled: config.image.enabled,

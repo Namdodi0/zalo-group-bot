@@ -117,7 +117,6 @@ const CLI_OPTIONS = {
   think: { type: 'string' },
   'max-tokens': { type: 'string' },
   'no-search': { type: 'boolean' },
-  'no-emoji': { type: 'boolean' },
   'no-typing': { type: 'boolean' },
   'no-progressive': { type: 'boolean' },
   progressive: { type: 'string' },
@@ -140,7 +139,6 @@ Flags:
   --progressive <m>   auto | on | off  (gửi tách đoạn khi trả lời chậm)
   --no-progressive    Tắt gửi tách đoạn
   --no-search         Tắt web search
-  --no-emoji          Không dùng emoji
   --no-typing         Không gửi trạng thái "đang soạn tin"
   --dry-run           Không gửi tin nhắn thật (chỉ log)
   --once              Chỉ nhận 1 lượt update rồi thoát (để test)
@@ -411,7 +409,6 @@ export function loadConfig(input = {}) {
       }
       return tone;
     })(),
-    emoji: cli['no-emoji'] ? false : readBool(env, 'EMOJI', true),
     typing: cli['no-typing'] ? false : readBool(env, 'TYPING', true),
     typingIntervalMs: /** @type {number} */ (readInt(env, 'TYPING_INTERVAL_MS', 4000, { min: 1000 })),
     progressive: /** @type {ProgressiveMode} */ (progressive),
@@ -449,7 +446,6 @@ export function describeConfig(config) {
     tone: config.tone,
     maxTokens: config.ai.maxTokens ?? 'unlimited',
     search: config.search.enabled ? `${config.search.depth}/${config.search.maxResults}` : 'off',
-    emoji: config.emoji,
     typing: config.typing,
     progressive: config.progressive,
     dataDir: config.dataDir,

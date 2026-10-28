@@ -214,17 +214,6 @@ export function sanitizeZaloMarkdown(text) {
   return normalizeWhitespace(out);
 }
 
-/** @param {string} text */
-export function stripEmoji(text) {
-  return String(text ?? '')
-    .replace(/\p{Extended_Pictographic}/gu, '')
-    .replace(/[\uFE0F\u200D\u20E3]/gu, '')
-    .replace(/[\u{1F3FB}-\u{1F3FF}]/gu, '')
-    .replace(/[ \t]{2,}/g, ' ')
-    .replace(/\n{3,}/g, '\n\n')
-    .trim();
-}
-
 /**
  * @param {string} text
  * @param {number} limit
@@ -250,12 +239,11 @@ export function formatDuration(ms) {
 /**
  * Chuẩn bị text cuối cùng để gửi Zalo.
  * @param {string} text
- * @param {{emoji?: boolean, parseMode?: 'markdown'|'none'}} [options]
+ * @param {{parseMode?: 'markdown'|'none'}} [options]
  */
 export function prepareOutgoing(text, options = {}) {
   let out = normalizeWhitespace(String(text ?? ''));
   if (options.parseMode !== 'none') out = sanitizeZaloMarkdown(out);
-  if (!options.emoji) out = stripEmoji(out);
   return out;
 }
 

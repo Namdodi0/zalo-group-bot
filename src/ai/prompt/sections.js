@@ -45,8 +45,6 @@ export const SECTION_ORDER = {
   identity: -1000,
   rules: 0,
   chatShape: 10,
-  emojiBase: 20,
-  emojiExtra: 30,
   formatting: 40,
   image: 50,
   long: 60,
@@ -81,12 +79,11 @@ const RULES = [
 /**
  * Đăng ký toàn bộ section của prompt Zalo vào registry.
  * @param {ReturnType<typeof import('./registry.js').createPromptRegistry>} registry
- * @param {{botName?: string, chatType?: string, emoji?: boolean, imageEnabled?: boolean, tone?: string}} [options]
+ * @param {{botName?: string, chatType?: string, imageEnabled?: boolean, tone?: string}} [options]
  */
 export function registerZaloSections(registry, options = {}) {
   const botName = options.botName || 'trợ lý AI';
   const inGroup = (options.chatType ?? 'GROUP') === 'GROUP';
-  const emoji = Boolean(options.emoji);
   const imageEnabled = Boolean(options.imageEnabled);
   const toneRules = TONE_RULES[options.tone ?? 'friendly'] ?? [];
 
@@ -110,20 +107,6 @@ export function registerZaloSections(registry, options = {}) {
     text: inGroup
       ? '- In groups people only reach you by @mentioning you or replying to your message. The sender name is prefixed to the text as "Name: message" — address that person by name when it matters.'
       : '- This is a private chat: answer directly and warmly.',
-  });
-
-  registry.section({
-    name: 'core:emoji',
-    order: SECTION_ORDER.emojiBase,
-    text: `- ${emoji ? 'Use emoji sparingly (1–2 per message), natural, never spammed.' : 'Never use emoji.'}`,
-  });
-
-  registry.section({
-    name: 'core:emoji-extra',
-    order: SECTION_ORDER.emojiExtra,
-    text: emoji
-      ? '- EMOJI (overrides the "sparingly" limit above): every reply must be packed with emojis — at least 4–8 per message, one in most sentences, matched to the mood (💖 😍 🥀 🔥 😤 😈 💔 ✨). Never send a message without emojis.'
-      : '',
   });
 
   registry.section({

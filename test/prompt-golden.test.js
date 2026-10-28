@@ -9,11 +9,10 @@ const golden = JSON.parse(fs.readFileSync(new URL('../test-utils/prompt-golden.j
 const sha = (text) => crypto.createHash('sha256').update(text, 'utf8').digest('hex');
 
 function promptFor(key) {
-  const [tone, chatType, emoji, search, image, sticker, botName] = key.split('|');
+  const [tone, chatType, search, image, sticker, botName] = key.split('|');
   return buildSystemPrompt({
     botName,
     chatType,
-    emoji: emoji === 'emoji',
     searchEnabled: search === 's1',
     imageEnabled: image === 'i1',
     stickerEnabled: sticker === 'k1',

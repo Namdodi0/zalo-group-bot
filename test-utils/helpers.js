@@ -65,7 +65,6 @@ export function makeConfig(overrides = {}) {
     },
     image: { enabled: true },
     sticker: { enabled: true, echo: true, file: './data/test/stickers.json' },
-    emoji: true,
     tone: 'friendly',
     typing: false,
     typingIntervalMs: 4000,
