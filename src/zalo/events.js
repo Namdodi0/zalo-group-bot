@@ -27,6 +27,40 @@ function asString(value) {
   return typeof value === 'string' ? value : value === undefined || value === null ? '' : String(value);
 }
 
+/** Pick a URL from a string/array/object (Zalo has shipped several shapes for photos). */
+function asUrl(value) {
+  if (typeof value === 'string') return value;
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      const url = asUrl(item);
+      if (url) return url;
+    }
+    return '';
+  }
+  if (value && typeof value === 'object') {
+    const row = /** @type {any} */ (value);
+    return asString(row.url ?? row.photo_url ?? row.href ?? row.link ?? '');
+  }
+  return '';
+}
+
+/** Pick a sticker id from a string/array/object. */
+function asStickerId(value) {
+  if (typeof value === 'string') return value;
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      const id = asStickerId(item);
+      if (id) return id;
+    }
+    return '';
+  }
+  if (value && typeof value === 'object') {
+    const row = /** @type {any} */ (value);
+    return asString(row.id ?? row.sticker_id ?? row.sticker ?? '');
+  }
+  return '';
+}
+
 /**
  * Zalo may return `result` as an object or an array depending on the version.
  * @param {unknown} payload
@@ -72,8 +106,8 @@ export function toEvent(item) {
     senderName: asString(from.display_name) || asString(from.name) || 'Member',
     isBot: from.is_bot === true,
     text: asString(message.text) || asString(message.caption),
-    imageUrl: asString(message.photo) || null,
-    sticker: asString(message.sticker) || null,
+    imageUrl: asUrl(message.photo) || null,
+    sticker: asStickerId(message.sticker) || null,
     messageId: asString(message.message_id),
     date: Number(message.date) || 0,
     eventName,

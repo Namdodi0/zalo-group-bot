@@ -96,20 +96,25 @@ export function createWebhookServer(options) {
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ ok: true }));
 
-      const events = normalizeUpdates(payload);
-      if (!events.length) {
-        logger.debug('webhook without message event', { keys: Object.keys(payload ?? {}) });
-        return;
-      }
-      setImmediate(() => {
-        for (const event of events) {
-          try {
-            onEvent(event);
-          } catch (error) {
-            logger.error('onEvent handler threw', { error });
-          }
+      try {
+        const events = normalizeUpdates(payload);
+        if (!events.length) {
+          logger.debug('webhook without message event', { keys: Object.keys(payload ?? {}) });
+          return;
         }
-      });
+        setImmediate(() => {
+          for (const event of events) {
+            try {
+              onEvent(event);
+            } catch (error) {
+              logger.error('onEvent handler threw', { error });
+            }
+          }
+        });
+      } catch (error) {
+        // A malformed payload must not escape the listener as an uncaught exception.
+        logger.error('webhook event processing failed', { error });
+      }
     });
 
     req.on('error', (error) => {

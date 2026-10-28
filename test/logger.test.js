@@ -132,3 +132,11 @@ test('visualWidth counts emoji as 2 columns', () => {
   assert.equal(visualWidth('🤖'), 2);
   assert.equal(visualWidth('a🤖b'), 4);
 });
+
+test('JSON: redacts DeepSeek-style sk- keys', () => {
+  const { logger, out, err } = jsonLogger();
+  logger.info('provider failed', { body: 'invalid key sk-abcdefghijklmnopqrstuvwxyz123456' });
+  const text = [...out.lines, ...err.lines].join('');
+  assert.equal(text.includes('sk-abcdefghijklmnopqrstuvwxyz123456'), false);
+  assert.match(text, /\*\*\*/);
+});

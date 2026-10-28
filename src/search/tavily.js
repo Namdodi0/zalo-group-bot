@@ -93,7 +93,8 @@ export function createTavilyClient(options) {
       },
       body: JSON.stringify(body),
       timeoutMs: opts.timeoutMs ?? 9000,
-      retries: 1,
+      // No retry: a search that already ran may be billed twice by Tavily.
+      retries: 0,
     });
 
     const data = /** @type {any} */ (response.data) ?? {};

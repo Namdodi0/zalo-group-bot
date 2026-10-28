@@ -40,6 +40,23 @@ test('normalize array-shaped payload', () => {
   assert.equal(events[1].kind, 'sticker');
 });
 
+test('object-shaped photo and sticker payloads', () => {
+  const events = normalizeUpdates({
+    result: [
+      {
+        event_name: 'message.image.received',
+        message: { from: { id: 'u1' }, chat: { id: 'g1', chat_type: 'GROUP' }, photo: { url: 'https://x/a.png' }, message_id: 'm4' },
+      },
+      {
+        event_name: 'message.sticker.received',
+        message: { from: { id: 'u1' }, chat: { id: 'g1', chat_type: 'GROUP' }, sticker: { id: '0e078a2fb66a5f34067b' }, message_id: 'm5' },
+      },
+    ],
+  });
+  assert.equal(events[0].imageUrl, 'https://x/a.png');
+  assert.equal(events[1].sticker, '0e078a2fb66a5f34067b');
+});
+
 test('private chat inferred from chat.id === from.id', () => {
   const event = toEvent({
     event_name: 'message.text.received',

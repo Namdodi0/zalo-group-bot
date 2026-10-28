@@ -5,7 +5,7 @@ import fsp from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { loadConfig } from '../src/config.js';
+import { collectSecrets, loadConfig } from '../src/config.js';
 
 function baseEnv(extra = {}) {
   return {
@@ -189,4 +189,26 @@ test('MODEL_DEFAULT=nim still works without a DeepSeek key', async () => {
     cwd: dir,
   });
   assert.equal(config.model.defaultAlias, 'nim');
+});
+
+test('a DeepSeek-only setup starts without a NIM key and picks an available fallback', async () => {
+  const dir = await tempDir();
+  const config = loadConfig({ argv: [], env: baseEnv({ NIM_API_KEY: '' }), cwd: dir });
+  assert.equal(config.model.defaultAlias, 'deepseek');
+
+  const { createModelCatalog } = await import('../src/ai/llm/catalog.js');
+  const catalog = createModelCatalog({ config, availableProviders: ['deepseek'] });
+  assert.equal(catalog.defaultAlias, 'deepseek');
+  assert.notEqual(catalog.fallbackAlias, 'nim-light');
+  assert.equal(catalog.list().every((item) => item.provider === 'deepseek'), true);
+  assert.equal(catalog.list().some((item) => item.alias === catalog.fallbackAlias), true);
+});
+
+test('collectSecrets includes every configured provider key', async () => {
+  const dir = await tempDir();
+  const config = loadConfig({ argv: [], env: baseEnv(), cwd: dir });
+  const secrets = collectSecrets(config);
+  for (const value of ['123:abc', 'nvapi-test', 'sk-test', 'tvly-test']) {
+    assert.ok(secrets.includes(value), value);
+  }
 });

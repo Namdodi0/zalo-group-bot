@@ -10,7 +10,7 @@ import { createCommands } from './commands/index.js';
 import { collectSecrets, ConfigError, describeConfig, HELP_TEXT, isEphemeralDataDir, loadConfig } from './config.js';
 import { createCompactionEngine } from './context/compaction/engine.js';
 import { createContextStore } from './context/store.js';
-import { describeEnvHints, loadEnvFiles } from './env.js';
+import { describeEnvHints, loadEnvFiles, PROJECT_ROOT } from './env.js';
 import { createHttp } from './http.js';
 import { createLogger, printBanner } from './logger.js';
 import { createImageValidator } from './media/validate.js';
@@ -23,8 +23,9 @@ import { createWebhookServer } from './zalo/webhook.js';
 
 // Load .env inside the code, BEFORE reading the config: host panels / pm2 / systemd often
 // run `node index.js` and drop the --env-file-if-exists flag. Variables already in the
-// environment still take precedence (see src/env.js).
-const envReport = loadEnvFiles();
+// environment still take precedence (see src/env.js). Also try the repo root so a panel that
+// starts the bot from another working directory still finds the file.
+const envReport = loadEnvFiles({ extraRoots: [PROJECT_ROOT] });
 
 async function main() {
   const config = loadConfig();
@@ -302,6 +303,8 @@ async function main() {
   });
   process.on('uncaughtException', (error) => {
     logger.error('uncaught exception', { error });
+    // The process is in an unknown state: stop taking work and exit instead of limping on.
+    void shutdown('uncaughtException').finally(() => process.exit(1));
   });
 
   const pruneTimer = setInterval(() => {

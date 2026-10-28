@@ -11,9 +11,13 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 /** Files tried, in priority order (the first one wins). */
 export const DEFAULT_ENV_FILES = ['.env', '.env.local'];
+
+/** Repo root derived from this file, independent of the process working directory. */
+export const PROJECT_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
 const KEY_RE = /^[A-Za-z_][A-Za-z0-9_]*$/;
 
@@ -72,13 +76,16 @@ export function parseEnvFile(text) {
 
 /**
  * Read the .env files and assign them into env (never overwrite a variable that already has a value).
- * @param {{ cwd?: string, env?: Record<string, string|undefined>, files?: string[] }} [options]
+ * Each file is looked up in `cwd` first, then in `extraRoots` (e.g. the repo root) so a panel
+ * that starts the bot from another directory still finds the file.
+ * @param {{ cwd?: string, env?: Record<string, string|undefined>, files?: string[], extraRoots?: string[] }} [options]
  * @returns {EnvReport}
  */
 export function loadEnvFiles(options = {}) {
   const cwd = path.resolve(options.cwd ?? process.cwd());
   const env = options.env ?? /** @type {Record<string, string|undefined>} */ (process.env);
   const files = options.files ?? DEFAULT_ENV_FILES;
+  const roots = [...new Set([cwd, ...(options.extraRoots ?? []).map((root) => path.resolve(root))])];
 
   /** @type {EnvFileReport[]} */
   const reports = [];
@@ -86,24 +93,30 @@ export function loadEnvFiles(options = {}) {
   const appliedAll = [];
 
   for (const name of files) {
-    const file = path.resolve(cwd, name);
     /** @type {EnvFileReport} */
-    const report = { name, path: file, found: false, applied: [], kept: [] };
-    let text;
-    try {
-      text = fs.readFileSync(file, 'utf8');
-      report.found = true;
-    } catch (error) {
-      const code = /** @type {any} */ (error)?.code;
-      // A missing file is normal (the panel provides variables via its UI). Keep other errors to report them.
-      if (code !== 'ENOENT' && code !== 'EISDIR') {
-        report.error = `${code ?? 'ERROR'}: ${/** @type {any} */ (error)?.message ?? error}`;
+    const report = { name, path: path.resolve(cwd, name), found: false, applied: [], kept: [] };
+    let text = null;
+    for (const root of roots) {
+      const candidate = path.resolve(root, name);
+      try {
+        text = fs.readFileSync(candidate, 'utf8');
+        report.path = candidate;
+        report.found = true;
+        break;
+      } catch (error) {
+        const code = /** @type {any} */ (error)?.code;
+        // A missing file is normal (the panel provides variables via its UI). Keep other errors to report them.
+        if (code !== 'ENOENT' && code !== 'EISDIR') {
+          report.error = `${code ?? 'ERROR'}: ${/** @type {any} */ (error)?.message ?? error}`;
+        }
       }
+    }
+    if (!report.found) {
       reports.push(report);
       continue;
     }
 
-    for (const [key, value] of parseEnvFile(text)) {
+    for (const [key, value] of parseEnvFile(String(text))) {
       const current = env[key];
       if (current === undefined || current === '') {
         env[key] = value;

@@ -248,7 +248,9 @@ export function createCommands(deps) {
             return { kind: 'text', text: 'Only group admins can remove stickers.' };
           }
           const target = raw.replace(/^(remove|xoa)\s+/i, '').trim();
-          if (!target) return { kind: 'text', text: 'Usage: `/sticker remove <id|name>`' };
+          if (!target || ['remove', 'xoa'].includes(target.toLowerCase())) {
+            return { kind: 'text', text: 'Usage: `/sticker remove <id|name>`' };
+          }
           const removed = await stickers.remove(target);
           return {
             kind: 'text',

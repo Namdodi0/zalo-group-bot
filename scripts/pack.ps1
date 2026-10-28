@@ -60,7 +60,7 @@ try {
         '# zalo-group-bot - env for hosting panels (ASCII, no BOM)',
         '# Holds real tokens/keys. Do not share this file.',
         '# If /home/container is not writable (EACCES mkdir data), change:',
-        '#   DATA_DIR=/tmp/zalo-data',
+        '#   DATA_DIR=/home/container/zalo-data  (persistent volume only - never /tmp)',
         ''
       )
       foreach ($line in (Get-Content $envPath -Encoding UTF8)) {
@@ -136,7 +136,7 @@ try {
     Write-Host "  - .env is NOT in the package -> send it separately or enter the variables in the panel"
   }
   Write-Host "  - data/ is NOT included -> the chat history stays on the dev machine"
-  Write-Host "  - node_modules is NOT included -> the server only needs Node >= 22.9"
+  Write-Host "  - node_modules is NOT included -> the server only needs Node >= 20.6"
 } finally {
   if (Test-Path $staging) { Remove-Item -Path $staging -Recurse -Force -ErrorAction SilentlyContinue }
 }

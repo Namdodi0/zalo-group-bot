@@ -26,6 +26,7 @@ const FALLBACK_RESERVE_RATIO = 0.25;
 const FALLBACK_RESERVE_MAX_MS = 8000;
 const FALLBACK_MIN_MS = 2500;
 const MIN_ATTEMPT_MS = 1500;
+const SLOW_CALL_WARN_MS = 120_000;
 
 /**
  * Split the budget of one attempt, always keeping part of the deadline for the fallback.
@@ -100,6 +101,16 @@ export function createAgent(deps) {
   const { config, logger, metrics, zalo, llm, store, tools, commands, stickers, compaction } = deps;
   const meter = createTokenMeter();
   const retryExecutor = createRetryExecutor({ shouldRetry: isRetryableLlmError, sleep });
+
+  /**
+   * Request timeout for a provider (0 = no limit). Uses the provider's own setting so a
+   * DeepSeek call is not governed by NIM_TIMEOUT_MS (or vice versa).
+   * @param {string} provider
+   */
+  function providerTimeout(provider) {
+    const value = Number(config?.[provider]?.timeoutMs ?? config.ai.timeoutMs ?? 0);
+    return Number.isFinite(value) && value > 0 ? value : 0;
+  }
 
   /** @type {Map<string, number>} */
   const seen = new Map();
@@ -447,10 +458,21 @@ export function createAgent(deps) {
           attempt: attemptIndex,
           maxAttempts: retryExecutor.maxAttempts,
           streaming,
-          aiTimeoutMs: config.ai.timeoutMs,
+          aiTimeoutMs: providerTimeout(target.provider),
         });
         // Measure failed calls too: llmMs is the total time actually spent on the LLM.
         const callStarted = Date.now();
+        // With no deadline a hung provider would otherwise be silent forever.
+        const slowTimer = setTimeout(() => {
+          logger.warn('llm call still running', {
+            chatId: event.chatId,
+            provider: target.provider,
+            model: target.model,
+            ms: Date.now() - callStarted,
+            icon: '🐢',
+          });
+        }, SLOW_CALL_WARN_MS);
+        slowTimer.unref?.();
         try {
           return await llm.chat({
             record,
@@ -469,6 +491,7 @@ export function createAgent(deps) {
                 : undefined,
           });
         } finally {
+          clearTimeout(slowTimer);
           llmMs += Date.now() - callStarted;
         }
       };
@@ -528,6 +551,7 @@ export function createAgent(deps) {
       // `flushed` = the head was already sent to the user; calling fallback now would duplicate content.
       if (!response && !flushed) {
         const fallbackAlias = llm.fallbackFor(record);
+        const fallbackEntry = fallbackAlias ? llm.find(fallbackAlias) : null;
         let left = deadline - Date.now();
         if (left > 6000) {
           await sleep(800);
@@ -535,6 +559,11 @@ export function createAgent(deps) {
         }
         if (fallbackAlias && left > FALLBACK_MIN_MS) {
           const fallbackStarted = Date.now();
+          // Respect the fallback provider's own timeout; 0 = no cap.
+          const providerLimit = providerTimeout(fallbackEntry?.provider ?? target.provider);
+          const timeLeft = Number.isFinite(left) ? Math.max(1500, left - 300) : 0;
+          const fallbackTimeout =
+            providerLimit > 0 ? (timeLeft > 0 ? Math.min(providerLimit, timeLeft) : providerLimit) : timeLeft;
           try {
             response = await llm.chatWith(fallbackAlias, {
               messages,
@@ -542,8 +571,7 @@ export function createAgent(deps) {
               temperature: config.ai.temperature,
               maxTokens: config.ai.maxTokens,
               stream: false,
-              // Last chance: use all the time left (no cap when there is no deadline).
-              timeoutMs: Number.isFinite(left) ? Math.max(1500, left - 300) : 0,
+              timeoutMs: fallbackTimeout,
               signal: Number.isFinite(left) ? AbortSignal.timeout(left) : undefined,
             });
             llmMs += Date.now() - fallbackStarted;
@@ -841,8 +869,10 @@ export function createAgent(deps) {
       let text = 'Sorry, something went wrong while handling this message. Please try again.';
       if (error instanceof CircuitOpenError) {
         text = 'I am a bit overloaded right now, please try again in a few seconds.';
+      } else if (/** @type {any} */ (error)?.code === LLM_ERROR.AUTH) {
+        text = 'The AI provider rejected the API key. Admin, please check the model API key.';
       } else if (error instanceof HttpError && error.status === 401) {
-        text = 'The bot hit an authentication error with the AI provider. Admin, please check the key.';
+        text = 'Zalo rejected the bot token. Admin, please check ZALO_BOT_TOKEN.';
       }
 
       try {

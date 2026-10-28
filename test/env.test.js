@@ -107,3 +107,14 @@ test('describeEnvHints: reports how many variables were loaded when .env exists'
   const hints = describeEnvHints();
   assert.equal(hints.some((line) => line.includes('.env: found (2 variables loaded from file)')), true);
 });
+
+test('loadEnvFiles: falls back to extraRoots when the cwd has no .env', async () => {
+  const cwd = await tempDir();
+  const root = await tempDir();
+  await fsp.writeFile(path.join(root, '.env'), 'ZALO_BOT_TOKEN=from-root\n');
+  const env = {};
+  const report = loadEnvFiles({ cwd, env, extraRoots: [root], files: ['.env'] });
+  assert.equal(env.ZALO_BOT_TOKEN, 'from-root');
+  assert.equal(report.files[0].path, path.join(root, '.env'));
+  assert.deepEqual(report.missing, []);
+});

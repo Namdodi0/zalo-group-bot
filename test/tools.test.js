@@ -85,3 +85,17 @@ test('when send_sticker is off there is no tool and nothing is sent', async () =
   assert.equal(result.ok, false);
   assert.equal(zalo.lastSticker, null);
 });
+
+test('no send_image tool when Tavily (search) is disabled', () => {
+  const tools = createToolRuntime({
+    config: baseConfig({ search: { enabled: false, auto: false, depth: 'fast', maxResults: 4, country: 'vietnam' } }),
+    tavily: null,
+    zalo: { sendPhoto: async () => ({ ok: true }), sendSticker: async () => ({ ok: true }) },
+    validator: { validate: async () => ({ ok: true }) },
+    stickers: fakeStickers,
+    logger: silentLogger,
+    metrics: { inc() {}, observe() {} },
+  });
+  const names = tools.definitions().map((tool) => tool.function.name);
+  assert.equal(names.includes('send_image'), false);
+});

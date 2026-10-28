@@ -112,6 +112,39 @@ test('isPrivateAddress recognizes internal ranges', () => {
   }
 });
 
+test('isPrivateAddress blocks IPv4-mapped/NAT64/6to4/Teredo forms', () => {
+  for (const address of [
+    '::ffff:7f00:1', // 127.0.0.1 in hex
+    '::ffff:a9fe:a9fe', // 169.254.169.254 in hex
+    '::ffff:c0a8:105', // 192.168.1.5
+    '64:ff9b::7f00:1', // NAT64
+    '2002:7f00:1::1', // 6to4
+    '2001:0:0:0:0:0:0:1', // Teredo
+    'fec0::1', // site-local
+    'ff02::1', // multicast
+  ]) {
+    assert.equal(isPrivateAddress(address), true, address);
+  }
+  for (const address of ['::ffff:808:808', '2606:4700:4700::1111']) {
+    assert.equal(isPrivateAddress(address), false, address);
+  }
+});
+
+test('blocks hostnames that resolve to an IPv4-mapped internal address', async () => {
+  let calls = 0;
+  const validator = createImageValidator({
+    fetchImpl: async () => {
+      calls += 1;
+      return fakeResponse({ headers: { 'content-type': 'image/png' } });
+    },
+    lookup: async () => ['::ffff:127.0.0.1'],
+  });
+  const result = await validator.validate('https://internal.example/a.png');
+  assert.equal(result.ok, false);
+  assert.match(String(result.reason), /internal/);
+  assert.equal(calls, 0);
+});
+
 test('blocks URLs pointing straight at an internal IP (no network call)', async () => {
   let calls = 0;
   const validator = makeValidator(async () => {

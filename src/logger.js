@@ -23,6 +23,7 @@ const LEVEL_META = {
 const SECRET_PATTERNS = [
   /nvapi-[A-Za-z0-9_-]{8,}/g,
   /tvly-[A-Za-z0-9_-]{8,}/g,
+  /\bsk-[A-Za-z0-9_-]{16,}\b/g,
   /\b\d{8,}:[A-Za-z0-9_-]{10,}\b/g,
 ];
 

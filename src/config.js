@@ -105,6 +105,7 @@ export function collectSecrets(config) {
   return [
     config.zalo.token,
     config.nim.apiKey,
+    config.deepseek.apiKey,
     config.search.apiKey,
     config.webhook.secret,
   ].filter(Boolean);
@@ -262,15 +263,14 @@ export function loadConfig(input = {}) {
   }
   if (fallbackAlias === defaultAlias) fallbackAlias = defaultAlias === 'nim-light' ? 'deepseek' : 'nim-light';
 
-  // Only require the key of the provider actually in use (default or fallback).
-  const usedProviders = new Set([
-    MODEL_ALIASES[defaultAlias].provider,
-    MODEL_ALIASES[fallbackAlias].provider,
-  ]);
-  if (usedProviders.has('nim') && !apiKey) {
-    throw new ConfigError('Missing NIM_API_KEY (used as the primary or fallback model)');
+  // Only the provider actually used as the primary needs a key. The fallback is optional:
+  // when its provider has no key the model catalog simply drops that alias and picks another
+  // available model (or no distinct fallback), instead of refusing to start.
+  const primaryProvider = MODEL_ALIASES[defaultAlias].provider;
+  if (primaryProvider === 'nim' && !apiKey) {
+    throw new ConfigError('Missing NIM_API_KEY (used as the primary model)');
   }
-  if (usedProviders.has('deepseek') && !deepseekKey) {
+  if (primaryProvider === 'deepseek' && !deepseekKey) {
     throw new ConfigError('Missing DEEPSEEK_API_KEY (see .env.example)');
   }
 
@@ -298,7 +298,6 @@ export function loadConfig(input = {}) {
   const config = {
     help: false,
     version: VERSION,
-    token,
     zalo: {
       token,
       botId: readStr(env, 'ZALO_BOT_ID'),
@@ -439,11 +438,14 @@ export function describeConfig(config) {
   const primaryModel = primary ? config[primary.provider]?.[primary.modelKey] : '';
   const fallback = MODEL_ALIASES[config.model.fallbackAlias];
   const fallbackModel = fallback ? config[fallback.provider]?.[fallback.modelKey] : '';
+  const fallbackReady = Boolean(fallback && config[fallback.provider]?.apiKey);
   return {
     version: config.version,
     mode: config.mode,
     model: `${config.model.defaultAlias} (${primaryModel})`,
-    fallbackModel: fallback ? `${config.model.fallbackAlias} (${fallbackModel || 'off'})` : 'off',
+    fallbackModel: fallback
+      ? `${config.model.fallbackAlias} (${fallbackReady ? fallbackModel || 'off' : 'no key — skipped'})`
+      : 'off',
     reasoning: config.ai.reasoning,
     tone: config.tone,
     maxTokens: config.ai.maxTokens ?? 'unlimited',

@@ -33,7 +33,8 @@ export function createToolRuntime(options) {
         },
       });
     }
-    if (config.image.enabled) {
+    // The image tool needs Tavily to find URLs; do not advertise it when search is off.
+    if (config.image.enabled && tavily) {
       tools.push({
         type: 'function',
         function: {
