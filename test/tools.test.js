@@ -99,3 +99,59 @@ test('no send_image tool when Tavily (search) is disabled', () => {
   const names = tools.definitions().map((tool) => tool.function.name);
   assert.equal(names.includes('send_image'), false);
 });
+
+test('set_reminder tool: definition, add and validation', async () => {
+  /** @type {any[]} */
+  const added = [];
+  const reminders = {
+    add: async (input) => {
+      added.push(input);
+      return { ok: true, item: { id: 4, at: input.at, text: input.text } };
+    },
+  };
+  const tools = createToolRuntime({
+    config: baseConfig(),
+    tavily: null,
+    zalo: { sendPhoto: async () => ({ ok: true }), sendSticker: async () => ({ ok: true }) },
+    validator: { validate: async () => ({ ok: true }) },
+    stickers: fakeStickers,
+    reminders,
+    logger: silentLogger,
+    metrics: { inc() {}, observe() {} },
+  });
+  assert.equal(tools.definitions().some((tool) => tool.function.name === 'set_reminder'), true);
+
+  let result = await tools.run('set_reminder', { when: '+10m', text: 'uống nước' }, { chatId: 'c1', senderId: 'u1' });
+  assert.equal(result.ok, true);
+  assert.match(result.text, /Reminder #4/);
+  assert.equal(added[0].chatId, 'c1');
+  assert.equal(added[0].createdBy, 'u1');
+  assert.equal(added[0].text, 'uống nước');
+  assert.ok(added[0].at > Date.now());
+
+  result = await tools.run('set_reminder', { when: '99:99', text: 'x' }, { chatId: 'c1' });
+  assert.equal(result.ok, false);
+  result = await tools.run('set_reminder', { when: '+10m' }, { chatId: 'c1' });
+  assert.equal(result.ok, false);
+});
+
+test('set_reminder tool: reports the per-chat limit and is absent without a store', async () => {
+  const make = (reminders) =>
+    createToolRuntime({
+      config: baseConfig(),
+      tavily: null,
+      zalo: { sendPhoto: async () => ({ ok: true }), sendSticker: async () => ({ ok: true }) },
+      validator: { validate: async () => ({ ok: true }) },
+      stickers: fakeStickers,
+      reminders,
+      logger: silentLogger,
+      metrics: { inc() {}, observe() {} },
+    });
+
+  const limited = { add: async () => ({ ok: false, reason: 'chat-limit' }) };
+  const result = await make(limited).run('set_reminder', { when: '+10m', text: 'x' }, { chatId: 'c1' });
+  assert.equal(result.ok, false);
+  assert.match(result.text, /5 reminders/);
+
+  assert.equal(make(null).definitions().some((tool) => tool.function.name === 'set_reminder'), false);
+});

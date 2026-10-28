@@ -59,9 +59,11 @@ const TOOL_GUIDANCE = {
   send_image: 'When the user asks for a picture ("send me a cat photo", "show me a picture ..."), call the `send_image` tool.',
   send_sticker:
     'When the user wants a sticker reaction ("send a sticker", "hello sticker", "cat sticker"...), call the `send_sticker` tool with an emotion keyword or pack name.',
+  set_reminder:
+    'When the user asks to be reminded at a later time ("nhắc tôi 8h tối nay", "remind me in 10 minutes"), call the `set_reminder` tool with the time converted to Vietnam time (`HH:MM`, `HH:MM mai`, `HH:MM dd/mm`, `+10m`, `+2h`, `+1d`) and the reminder content. Only confirm the reminder after the tool returns ok. Reminders are capped at 5 per chat and 30 days ahead.',
 };
 
-export const TOOL_ORDER = ['web_search', 'send_image', 'send_sticker'];
+export const TOOL_ORDER = ['web_search', 'send_image', 'send_sticker', 'set_reminder'];
 
 const RULES = [
   '- Default to Vietnamese. If the user writes in another language, answer in that language.',

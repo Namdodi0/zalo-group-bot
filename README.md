@@ -14,7 +14,7 @@ A chat bot for **a single Zalo group**, powered by **NVIDIA NIM** (`nvidia/nemot
 - Zalo markdown formatting, long messages split into ≤ 1900 characters (Zalo's safe limit).
 - **Low latency**: no `max_tokens` cap, `reasoning_effort: none` by default (~0 thinking tokens), typing indicator, model warm-up, streaming + partial sends for slow answers, search/image cache, retry + circuit breaker.
 - **Complete answers, never cut short**: no fixed sentence budget — length follows the question; questions that need explanation/comparison/instructions come with numbers and examples. No length hints are injected into the request sent to the model.
-- **Reminders** (`/remind 20:00 mai họp nhóm`) persisted to `data/reminders.json`, and **pinned facts** (`/remember`) that survive context compaction.
+- **Reminders** (`/remind 20:00 mai họp nhóm`, or the model's `set_reminder` tool) persisted to `data/reminders.json`, and **pinned facts** (`/remember`) that survive context compaction.
 - Commands: `/help`, `/reset`, `/status`, `/id`, `/summary`, `/search`, `/image`, `/sticker`, `/remind`, `/remember`, `/forget`, `/model`, `/think`, `/split`, `/compact`, `/ping`.
 
 ## Requirements

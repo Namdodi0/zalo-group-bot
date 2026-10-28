@@ -333,7 +333,7 @@ export function createAgent(deps) {
       const search = await tools.run(
         'web_search',
         { query: options.forceSearch },
-        { chatId: event.chatId, deadline },
+        { chatId: event.chatId, senderId: event.senderId, deadline },
       );
       record.messages.splice(
         record.messages.length - 1,
@@ -642,7 +642,11 @@ export function createAgent(deps) {
 
         for (const call of response.toolCalls) {
           const started = Date.now();
-          const result = await tools.run(call.name, call.arguments, { chatId: event.chatId, deadline });
+          const result = await tools.run(call.name, call.arguments, {
+            chatId: event.chatId,
+            senderId: event.senderId,
+            deadline,
+          });
           metrics.observe(`tool.${call.name}`, Date.now() - started);
           const text = truncate(result.text, 4000);
           messages.push({
@@ -825,6 +829,7 @@ export function createAgent(deps) {
             { query: result.query },
             {
               chatId: event.chatId,
+              senderId: event.senderId,
               deadline:
                 config.responseTimeoutMs > 0
                   ? Date.now() + config.responseTimeoutMs

@@ -1,7 +1,8 @@
 import { formatSearchResults } from '../search/tavily.js';
+import { REMINDER_LIMITS, formatReminderTime, parseReminderArgs } from './reminders.js';
 
 /**
- * @param {{config: any, tavily: ReturnType<typeof import('../search/tavily.js').createTavilyClient>|null, zalo: ReturnType<typeof import('../zalo/client.js').createZaloClient>, validator: ReturnType<typeof import('../media/validate.js').createImageValidator>, stickers?: ReturnType<typeof import('./stickers.js').createStickerStore>, logger: import('../logger.js').Logger, metrics?: any}} options
+ * @param {{config: any, tavily: ReturnType<typeof import('../search/tavily.js').createTavilyClient>|null, zalo: ReturnType<typeof import('../zalo/client.js').createZaloClient>, validator: ReturnType<typeof import('../media/validate.js').createImageValidator>, stickers?: ReturnType<typeof import('./stickers.js').createStickerStore>, reminders?: ReturnType<typeof import('./reminders.js').createReminderStore>, logger: import('../logger.js').Logger, metrics?: any}} options
  */
 export function createToolRuntime(options) {
   const config = options.config;
@@ -9,6 +10,7 @@ export function createToolRuntime(options) {
   const zalo = options.zalo;
   const validator = options.validator;
   const stickers = options.stickers;
+  const reminders = options.reminders;
   const logger = options.logger;
   const metrics = options.metrics;
 
@@ -71,19 +73,89 @@ export function createToolRuntime(options) {
         },
       });
     }
+    if (reminders) {
+      tools.push({
+        type: 'function',
+        function: {
+          name: 'set_reminder',
+          description:
+            'Set a reminder in this chat. Use when the user asks to be reminded later ("nhắc tôi 8h tối nay", "remind me in 10 minutes"). Convert the requested time to Vietnam time. Only tell the user the reminder is set after this tool returns ok.',
+          parameters: {
+            type: 'object',
+            properties: {
+              when: {
+                type: 'string',
+                description:
+                  'Reminder time in Vietnam time: "HH:MM", "HH:MM mai", "HH:MM mốt", "HH:MM dd/mm", or relative "+10m", "+2h", "+1d". Example: "20:00", "08:00 mai", "09:30 05/11", "+30m".',
+              },
+              text: { type: 'string', description: 'What to remind the user about' },
+            },
+            required: ['when', 'text'],
+          },
+        },
+      });
+    }
     return tools;
+  }
+
+  /**
+   * @param {any} args
+   * @param {{chatId: string, senderId?: string, deadline?: number}} ctx
+   * @returns {Promise<{ok: boolean, text: string}>}
+   */
+  async function setReminder(args, ctx) {
+    if (!reminders) return { ok: false, text: 'Reminders are not enabled.' };
+    const when = String(args?.when ?? '').trim();
+    const text = String(args?.text ?? args?.content ?? '').trim();
+    if (!when) return { ok: false, text: 'Missing the reminder time (when).' };
+    if (!text) return { ok: false, text: 'Missing the reminder content (text).' };
+    if (text.length > REMINDER_LIMITS.MAX_REMINDER_CHARS) {
+      return { ok: false, text: `The reminder content is too long (max ${REMINDER_LIMITS.MAX_REMINDER_CHARS} characters).` };
+    }
+    // Parse only `when`; a placeholder keeps the parser's content check quiet.
+    const parsed = parseReminderArgs(`${when} x`);
+    if (parsed.error || !Number.isFinite(parsed.at)) {
+      return { ok: false, text: parsed.error ?? 'Invalid reminder time.' };
+    }
+    const result = await reminders.add({
+      chatId: ctx.chatId,
+      text,
+      at: /** @type {number} */ (parsed.at),
+      createdBy: ctx.senderId ?? '',
+    });
+    if (!result.ok) {
+      const reason = /** @type {any} */ (result).reason;
+      return {
+        ok: false,
+        text:
+          reason === 'chat-limit'
+            ? `This chat already has ${REMINDER_LIMITS.MAX_PER_CHAT} reminders; cancel one first.`
+            : 'The reminder limit has been reached, try again later.',
+      };
+    }
+    logger.info('reminder set by model', {
+      chatId: ctx.chatId,
+      id: result.item.id,
+      at: formatReminderTime(result.item.at),
+      icon: '⏰',
+    });
+    return {
+      ok: true,
+      text: `Reminder #${result.item.id} set for ${formatReminderTime(result.item.at)} (Vietnam time): ${result.item.text}`,
+    };
   }
 
   /**
    * @param {string} name
    * @param {any} args
-   * @param {{chatId: string, deadline?: number}} ctx
+   * @param {{chatId: string, senderId?: string, deadline?: number}} ctx
    * @returns {Promise<{ok: boolean, text: string, data?: any}>}
    */
   async function run(name, args, ctx) {
     if (name === 'web_search') return webSearch(args, ctx);
     if (name === 'send_image') return sendImage(args, ctx);
     if (name === 'send_sticker') return sendSticker(args, ctx);
+    if (name === 'set_reminder') return setReminder(args, ctx);
     return { ok: false, text: `Tool does not exist: ${name}` };
   }
 

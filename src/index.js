@@ -152,7 +152,7 @@ async function main() {
   });
   const summarize = createSummarizer({ llm: models, logger });
   const compaction = createCompactionEngine({ config, logger, metrics, summarize });
-  const tools = createToolRuntime({ config, tavily, zalo, validator, stickers, logger, metrics });
+  const tools = createToolRuntime({ config, tavily, zalo, validator, stickers, reminders, logger, metrics });
   const commands = createCommands({
     config,
     store,

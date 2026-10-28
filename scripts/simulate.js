@@ -122,7 +122,6 @@ const stickers = createStickerStore({ file: config.sticker.file, extraIds: confi
 await stickers.load();
 const summarize = createSummarizer({ llm: models, logger });
 const compaction = createCompactionEngine({ config, logger, metrics, summarize });
-const tools = createToolRuntime({ config, tavily, zalo, validator, stickers, logger, metrics });
 const reminders = createReminderStore({
   file: null,
   send: async (chatId, text) => console.log(`
@@ -130,6 +129,7 @@ const reminders = createReminderStore({
 ${text}`),
   logger,
 });
+const tools = createToolRuntime({ config, tavily, zalo, validator, stickers, reminders, logger, metrics });
 const commands = createCommands({
   config,
   store,
