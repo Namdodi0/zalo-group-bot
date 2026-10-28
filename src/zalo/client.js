@@ -14,7 +14,7 @@ export class ZaloApiError extends Error {
 }
 
 /**
- * Client REST mỏng cho Zalo Bot API (không phụ thuộc SDK).
+ * Thin REST client for the Zalo Bot API (no SDK dependency).
  * @param {{token: string, baseUrl?: string, parseMode?: 'markdown'|'none', http: ReturnType<typeof import('../http.js').createHttp>, logger?: import('../logger.js').Logger, metrics?: any, dryRun?: boolean, typingIntervalMs?: number}} options
  */
 export function createZaloClient(options) {
@@ -33,8 +33,8 @@ export function createZaloClient(options) {
   const typingTimers = new Set();
 
   /**
-   * Mặc định KHÔNG retry: sendMessage/sendPhoto/sendSticker là POST không idempotent,
-   * retry có thể gửi trùng tin vào group.
+   * No retry by default: sendMessage/sendPhoto/sendSticker are non-idempotent POSTs,
+   * and a retry could send a duplicate message to the group.
    * @param {string} method
    * @param {Record<string, unknown>} payload
    * @param {{timeoutMs?: number, retries?: number}} [opts]
@@ -76,7 +76,7 @@ export function createZaloClient(options) {
     return result;
   }
 
-  /** Đo round-trip tới Zalo API (không gây hiệu ứng "đang soạn tin"). */
+  /** Measure the round-trip to the Zalo API (does not trigger the "typing" indicator). */
   async function ping() {
     const started = Date.now();
     await call('getMe', {}, { retries: 0, timeoutMs: 5000 });
@@ -84,10 +84,10 @@ export function createZaloClient(options) {
   }
 
   /**
-   * Long-poll. Zalo trả `{ok:false, error_code:408}` khi hết timeout mà không có tin mới —
-   * đó là trạng thái bình thường, không phải lỗi.
+   * Long-poll. Zalo returns `{ok:false, error_code:408}` when the timeout expires with no
+   * new messages — that is a normal state, not an error.
    * @param {number} [timeoutSec]
-   * @param {AbortSignal} [signal] huỷ khi shutdown để không nhận thêm tin mới
+   * @param {AbortSignal} [signal] abort on shutdown so no further messages are received
    */
   async function getUpdates(timeoutSec = 30, signal) {
     const url = `${baseUrl}/bot${token}/getUpdates`;
@@ -162,7 +162,7 @@ export function createZaloClient(options) {
     return call('sendChatAction', { chat_id: chatId, action }, { retries: 0, timeoutMs: 5000 });
   }
 
-  /** @param {string} chatId @param {string} stickerId ID gói sticker (20 hex) */
+  /** @param {string} chatId @param {string} stickerId sticker pack ID (20 hex) */
   async function sendSticker(chatId, stickerId) {
     if (mutating('sendSticker', { sticker: stickerId })) return { ok: true, dryRun: true };
     const started = Date.now();
@@ -173,9 +173,9 @@ export function createZaloClient(options) {
   }
 
   /**
-   * Bật "đang soạn tin" và refresh định kỳ.
-   * Hàm trả về `stop()` (async): dừng refresh, chờ request cuối kết thúc để indicator
-   * không hiện thêm sau khi bot đã gửi tin.
+   * Turn on the "typing" indicator and refresh it periodically.
+   * Returns `stop()` (async): stops refreshing and waits for the last request to finish so
+   * the indicator does not keep showing after the bot has sent its message.
    * @param {string} chatId
    * @returns {() => Promise<void>}
    */

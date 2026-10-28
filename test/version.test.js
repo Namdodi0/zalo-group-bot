@@ -16,17 +16,17 @@ function sink() {
   return { lines, stream: { write: (line) => lines.push(line) } };
 }
 
-test('VERSION khớp package.json', () => {
+test('VERSION matches package.json', () => {
   assert.equal(VERSION, pkg.version);
   assert.match(VERSION, /^\d+\.\d+\.\d+/);
 });
 
-test('readVersion trả 0.0.0 khi không đọc được package.json', () => {
+test('readVersion returns 0.0.0 when package.json cannot be read', () => {
   versionTest.reset();
   assert.equal(readVersion(new URL('file:///khong-ton-tai/package.json')), '0.0.0');
 });
 
-test('loadConfig có version để log', () => {
+test('loadConfig exposes a version for logging', () => {
   const config = loadConfig({
     argv: [],
     env: {
@@ -41,7 +41,7 @@ test('loadConfig có version để log', () => {
   assert.equal(config.version, VERSION);
 });
 
-test('logger JSON gắn version vào mọi dòng log', () => {
+test('the JSON logger adds the version to every log line', () => {
   const out = sink();
   const logger = createLogger({
     level: 'info',
@@ -51,14 +51,14 @@ test('logger JSON gắn version vào mọi dòng log', () => {
     stderr: /** @type {any} */ (out.stream),
   });
   logger.info('hello', { a: 1 });
-  logger.warn('cảnh báo');
+  logger.warn('warning');
   const records = out.lines.map((line) => JSON.parse(line));
   assert.equal(records.length, 2);
   assert.equal(records[0].version, '9.9.9');
   assert.equal(records[1].version, '9.9.9');
 });
 
-test('logger pretty cũng hiện version', () => {
+test('the pretty logger shows the version too', () => {
   const out = sink();
   const logger = createLogger({
     level: 'info',
@@ -72,7 +72,7 @@ test('logger pretty cũng hiện version', () => {
   assert.match(out.lines.join('\n'), /version=1\.2\.3/);
 });
 
-test('logger không tự thêm version khi không truyền', () => {
+test('the logger does not add a version when none is passed', () => {
   const out = sink();
   const logger = createLogger({
     level: 'info',
@@ -84,7 +84,7 @@ test('logger không tự thêm version khi không truyền', () => {
   assert.equal(JSON.parse(out.lines[0]).version, undefined);
 });
 
-test('metrics.gauge lưu giá trị tức thời, snapshot có gauges', () => {
+test('metrics.gauge stores the instantaneous value, the snapshot exposes gauges', () => {
   const metrics = createMetrics();
   metrics.gauge('llm.tokensPerSec', 42.7);
   metrics.gauge('llm.tokensPerSec', 51.2);
@@ -94,7 +94,7 @@ test('metrics.gauge lưu giá trị tức thời, snapshot có gauges', () => {
   assert.equal(snapshot.gauges['khong-hop-le'], undefined);
 });
 
-test('tokensPerSec: token/giây, làm tròn 1 chữ số, chặn số vô nghĩa', () => {
+test('tokensPerSec: tokens/second, rounded to 1 decimal, rejects meaningless numbers', () => {
   assert.equal(nimTest.tokensPerSec(100, 2000), 50);
   assert.equal(nimTest.tokensPerSec(150, 3600), 41.7);
   assert.equal(nimTest.tokensPerSec(0, 1000), 0);

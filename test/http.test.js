@@ -14,7 +14,7 @@ function response(body, status = 200) {
 
 const noSleep = async () => {};
 
-test('requestJson retry rồi thành công', async () => {
+test('requestJson retries then succeeds', async () => {
   let calls = 0;
   const http = createHttp({
     sleep: noSleep,
@@ -29,7 +29,7 @@ test('requestJson retry rồi thành công', async () => {
   assert.equal(result.data.value, 42);
 });
 
-test('requestJson không retry với 400', async () => {
+test('requestJson does not retry on 400', async () => {
   let calls = 0;
   const http = createHttp({
     sleep: noSleep,
@@ -45,7 +45,7 @@ test('requestJson không retry với 400', async () => {
   assert.equal(calls, 1);
 });
 
-test('requestJson báo lỗi JSON không hợp lệ', async () => {
+test('requestJson reports invalid JSON', async () => {
   const http = createHttp({ sleep: noSleep, fetchImpl: async () => response('not-json') });
   await assert.rejects(
     () => http.requestJson('https://example.com', { service: 'test', retries: 0 }),
@@ -53,7 +53,7 @@ test('requestJson báo lỗi JSON không hợp lệ', async () => {
   );
 });
 
-test('không retry và không mở breaker khi caller abort', async () => {
+test('no retry and no breaker trip when the caller aborts', async () => {
   let calls = 0;
   const controller = new AbortController();
   controller.abort();
@@ -73,7 +73,7 @@ test('không retry và không mở breaker khi caller abort', async () => {
   assert.equal(http.stateOf('abort-svc').open, false);
 });
 
-test('circuit breaker mở sau 5 lỗi', async () => {
+test('circuit breaker opens after 5 failures', async () => {
   let calls = 0;
   const http = createHttp({
     sleep: noSleep,

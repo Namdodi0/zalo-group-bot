@@ -1,6 +1,6 @@
 /**
- * Danh mục model có thể chọn bằng lệnh /model.
- * `modelKey` trỏ tới field trong config của provider.
+ * Model catalog selectable via the /model command.
+ * `modelKey` points to a field in the provider config.
  */
 export const MODEL_ALIASES = {
   deepseek: {
@@ -30,10 +30,10 @@ export const MODEL_ALIASES = {
   },
 };
 
-/** Alias mặc định (DeepSeek flash 4.1, reasoning off). */
+/** Default alias (DeepSeek flash 4.1, reasoning off). */
 export const DEFAULT_ALIAS = 'deepseek';
 
-/** Alias dự phòng khi provider chính lỗi. */
+/** Fallback alias when the primary provider fails. */
 export const FALLBACK_ALIAS = 'nim-light';
 
 /** @param {string} value */
@@ -42,7 +42,7 @@ export function isKnownAlias(value) {
 }
 
 /**
- * Tìm alias theo tên model hoặc tên provider.
+ * Find an alias by model name or provider name.
  * @param {string} value
  * @returns {string|null}
  */
@@ -50,7 +50,7 @@ export function findAlias(value) {
   const needle = String(value ?? '').trim().toLowerCase();
   if (!needle) return null;
   if (isKnownAlias(needle)) return needle;
-  // cho phép "/model deepseek" hoặc "/model nim"
+  // allow "/model deepseek" or "/model nim"
   for (const [alias, meta] of Object.entries(MODEL_ALIASES)) {
     if (meta.provider === needle) return alias;
   }

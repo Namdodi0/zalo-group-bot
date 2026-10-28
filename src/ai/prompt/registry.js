@@ -16,7 +16,7 @@ export function interpolate(text, variables, section) {
   return String(text ?? '').replace(REFERENCE, (_match, name) => {
     const value = variables[name];
     if (value === undefined) {
-      throw new PromptVariableError(`Biến prompt "${name}" chưa được đăng ký hoặc không có giá trị (section ${section})`, {
+      throw new PromptVariableError(`Prompt variable "${name}" is not registered or has no value (section ${section})`, {
         section,
         variable: name,
       });
@@ -26,7 +26,7 @@ export function interpolate(text, variables, section) {
 }
 
 /**
- * Registry các section (text tĩnh/động) + context runtime + variable + tool schema.
+ * Registry of sections (static/dynamic text) + runtime context + variables + tool schemas.
  * @param {{onChange?: (event: string, name: string) => void}} [options]
  */
 export function createPromptRegistry(options = {}) {
@@ -42,7 +42,7 @@ export function createPromptRegistry(options = {}) {
 
   /** @param {number} order @param {string} name */
   function checkOrder(order, name) {
-    if (!Number.isFinite(order)) throw new Error(`Prompt section "${name}" cần order hữu hạn`);
+    if (!Number.isFinite(order)) throw new Error(`Prompt section "${name}" requires a finite order`);
   }
 
   function sortEntries(entries) {
@@ -54,8 +54,8 @@ export function createPromptRegistry(options = {}) {
 
   /** @param {{name: string, order: number, text: string|((ctx: any) => string), interpolate?: boolean, complete?: boolean}} section */
   function section(section) {
-    if (!section?.name) throw new Error('Prompt section cần name');
-    if (sections.has(section.name)) throw new Error(`Prompt section trùng tên: ${section.name}`);
+    if (!section?.name) throw new Error('Prompt section requires a name');
+    if (sections.has(section.name)) throw new Error(`Duplicate prompt section name: ${section.name}`);
     checkOrder(section.order, section.name);
     sections.set(section.name, { ...section, interpolate: section.interpolate !== false, complete: Boolean(section.complete) });
     notify('section', section.name);
@@ -67,8 +67,8 @@ export function createPromptRegistry(options = {}) {
 
   /** @param {{name: string, order: number, text: string|((ctx: any) => string), interpolate?: boolean, required?: boolean}} context */
   function context(context) {
-    if (!context?.name) throw new Error('Prompt context cần name');
-    if (contexts.has(context.name)) throw new Error(`Prompt context trùng tên: ${context.name}`);
+    if (!context?.name) throw new Error('Prompt context requires a name');
+    if (contexts.has(context.name)) throw new Error(`Duplicate prompt context name: ${context.name}`);
     checkOrder(context.order, context.name);
     contexts.set(context.name, { ...context, interpolate: context.interpolate !== false, required: Boolean(context.required) });
     notify('context', context.name);
@@ -80,8 +80,8 @@ export function createPromptRegistry(options = {}) {
 
   /** @param {string} name @param {(ctx: any) => string|undefined} provider */
   function variable(name, provider) {
-    if (!VARIABLE_NAME.test(name)) throw new Error(`Tên biến prompt không hợp lệ: ${name}`);
-    if (variables.has(name)) throw new Error(`Biến prompt trùng tên: ${name}`);
+    if (!VARIABLE_NAME.test(name)) throw new Error(`Invalid prompt variable name: ${name}`);
+    if (variables.has(name)) throw new Error(`Duplicate prompt variable name: ${name}`);
     variables.set(name, provider);
     notify('variable', name);
     return () => {
@@ -107,7 +107,7 @@ export function createPromptRegistry(options = {}) {
   }
 
   /**
-   * Assembly một lượt: resolve section/context/variable và tool names.
+   * Assemble one turn: resolve sections/contexts/variables and tool names.
    * @param {any} [ctx]
    */
   function assemble(ctx = {}) {
@@ -140,7 +140,7 @@ export function createPromptRegistry(options = {}) {
       else resolvedSections.push(resolved);
     }
     if (completeSections.length > 1) {
-      throw new Error(`Chỉ được có 1 prompt section complete, đang có: ${completeSections.map((s) => s.name).join(', ')}`);
+      throw new Error(`Only one complete prompt section is allowed, got: ${completeSections.map((s) => s.name).join(', ')}`);
     }
 
     const resolvedContexts = sortEntries(contexts.values()).map((entry) => ({

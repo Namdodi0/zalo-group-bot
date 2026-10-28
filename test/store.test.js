@@ -7,13 +7,13 @@ import { latestSummary, summaryEntry } from '../src/context/record.js';
 import { createContextStore } from '../src/context/store.js';
 import { silentLogger } from '../test-utils/helpers.js';
 
-test('store lưu, nạp lại, reset', async () => {
+test('store saves, reloads, resets', async () => {
   const dir = await fsp.mkdtemp(path.join(os.tmpdir(), 'zalo-store-'));
   const store = createContextStore({ dir, logger: silentLogger, ttlHours: 72, debounceMs: 2 });
   await store.init();
 
   const record = await store.get('chat-1', { chatType: 'GROUP' });
-  record.messages.push({ role: 'user', text: 'xin chào', ts: Date.now() });
+  record.messages.push({ role: 'user', text: 'hello', ts: Date.now() });
   record.turns = 1;
   store.touch('chat-1');
   await store.flush();
@@ -22,7 +22,7 @@ test('store lưu, nạp lại, reset', async () => {
   await store2.init();
   const loaded = await store2.get('chat-1');
   assert.equal(loaded.messages.length, 1);
-  assert.equal(loaded.messages[0].text, 'xin chào');
+  assert.equal(loaded.messages[0].text, 'hello');
   assert.equal(loaded.turns, 1);
 
   await store2.reset('chat-1');
@@ -32,7 +32,7 @@ test('store lưu, nạp lại, reset', async () => {
   assert.equal(fresh.messages.length, 0);
 });
 
-test('store prune xoá file quá TTL', async () => {
+test('store prune deletes files past TTL', async () => {
   const dir = await fsp.mkdtemp(path.join(os.tmpdir(), 'zalo-store-'));
   const store = createContextStore({ dir, logger: silentLogger, ttlHours: 1 });
   await store.init();
@@ -51,13 +51,13 @@ test('store prune xoá file quá TTL', async () => {
   await assert.rejects(() => fsp.stat(file));
 });
 
-test('store giữ chat đang hoạt động khi prune', async () => {
+test('store keeps active chats during prune', async () => {
   const dir = await fsp.mkdtemp(path.join(os.tmpdir(), 'zalo-store-'));
   const store = createContextStore({ dir, logger: silentLogger, ttlHours: 1 });
   await store.init();
 
   const record = await store.get('fresh-chat');
-  record.messages.push({ role: 'user', text: 'mới', ts: Date.now() });
+  record.messages.push({ role: 'user', text: 'new', ts: Date.now() });
   store.touch('fresh-chat');
   await store.flush();
 
@@ -67,13 +67,13 @@ test('store giữ chat đang hoạt động khi prune', async () => {
   assert.equal(loaded.messages.length, 1);
 });
 
-test('store reset keepMeta giữ meta, xoá messages/summary', async () => {  const dir = await fsp.mkdtemp(path.join(os.tmpdir(), 'zalo-store-'));
+test('store reset keepMeta keeps meta, clears messages/summary', async () => {  const dir = await fsp.mkdtemp(path.join(os.tmpdir(), 'zalo-store-'));
   const store = createContextStore({ dir, logger: silentLogger, ttlHours: 72, debounceMs: 2 });
   await store.init();
 
   const record = await store.get('chat-2', { chatType: 'GROUP' });
-  record.messages.push(summaryEntry('tóm tắt cũ'));
-  record.messages.push({ role: 'user', text: 'chửi nhau', ts: Date.now() });
+  record.messages.push(summaryEntry('old summary'));
+  record.messages.push({ role: 'user', text: 'trash talk', ts: Date.now() });
   record.turns = 3;
   record.meta = { thinking: 'low', model: 'nim', tone: 'roast-hard' };
   await store.flush();
@@ -89,7 +89,7 @@ test('store reset keepMeta giữ meta, xoá messages/summary', async () => {  co
   assert.deepEqual(loaded.meta, { thinking: 'low', model: 'nim', tone: 'roast-hard' });
 });
 
-test('store reset mặc định (không keepMeta) xoá sạch file', async () => {
+test('store reset by default (no keepMeta) deletes the whole file', async () => {
   const dir = await fsp.mkdtemp(path.join(os.tmpdir(), 'zalo-store-'));
   const store = createContextStore({ dir, logger: silentLogger, ttlHours: 72, debounceMs: 2 });
   await store.init();
@@ -101,7 +101,7 @@ test('store reset mặc định (không keepMeta) xoá sạch file', async () =>
   await assert.rejects(() => fsp.stat(store.fileFor('chat-3')));
 });
 
-test('prune bỏ cả record cũ trong RAM, không chỉ file', async () => {
+test('prune drops old in-memory records too, not just files', async () => {
   const dir = await fsp.mkdtemp(path.join(os.tmpdir(), 'zalo-store-'));
   const store = createContextStore({ dir, logger: silentLogger, ttlHours: 1, debounceMs: 2 });
   await store.init();
@@ -112,20 +112,20 @@ test('prune bỏ cả record cũ trong RAM, không chỉ file', async () => {
   assert.equal(store.has('stale-chat'), true);
 
   await store.prune();
-  assert.equal(store.has('stale-chat'), false, 'record quá TTL phải bị bỏ khỏi RAM');
+  assert.equal(store.has('stale-chat'), false, 'records past TTL must be dropped from memory');
 });
 
-test('CONTEXT_TTL_HOURS=0: prune không xoá context nào', async () => {
+test('CONTEXT_TTL_HOURS=0: prune deletes no context', async () => {
   const dir = await fsp.mkdtemp(path.join(os.tmpdir(), 'zalo-store-'));
   const store = createContextStore({ dir, logger: silentLogger, ttlHours: 0, debounceMs: 2 });
   await store.init();
 
   const record = await store.get('keep-forever');
-  record.messages.push({ role: 'user', text: 'tin cũ', ts: 1 });
+  record.messages.push({ role: 'user', text: 'old message', ts: 1 });
   store.touch('keep-forever');
   await store.flush();
 
-  // Giả lập file đã 1 năm tuổi: TTL > 0 sẽ bị xoá, TTL = 0 thì phải giữ.
+  // Simulate a file that is one year old: with TTL > 0 it gets deleted, with TTL = 0 it must be kept.
   const old = new Date(Date.now() - 365 * 24 * 3_600_000);
   await fsp.utimes(store.fileFor('keep-forever'), old, old);
 

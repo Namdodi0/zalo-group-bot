@@ -1,5 +1,5 @@
 /**
- * Executor retry tách khỏi adapter: adapter khai báo policy, executor chạy lại.
+ * Retry executor kept separate from the adapter: the adapter declares the policy, the executor re-runs it.
  * @param {{maxAttempts?: number, backoffMs?: (attempt: number) => number, shouldRetry?: (error: unknown) => boolean, sleep?: (ms: number) => Promise<void>, minRemainingMs?: number}} [options]
  */
 export function createRetryExecutor(options = {}) {
@@ -33,7 +33,7 @@ export function createRetryExecutor(options = {}) {
     }
 
     if (lastError) throw lastError;
-    throw new Error('Hết thời gian trước khi gọi model');
+    throw new Error('Timed out before calling the model');
   }
 
   return { execute, maxAttempts };

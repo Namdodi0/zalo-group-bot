@@ -1,8 +1,8 @@
 import { DEFAULT_ALIAS, FALLBACK_ALIAS, MODEL_ALIASES } from '../models.js';
 
 /**
- * Danh mục model: alias -> route + capability.
- * Chỉ chứa alias có model string và provider đang có adapter.
+ * Model catalog: alias -> route + capability.
+ * Only includes aliases that have a model string and a provider with an adapter.
  * @param {{config: any, availableProviders?: Iterable<string>}} options
  */
 export function createModelCatalog(options) {
@@ -23,7 +23,7 @@ export function createModelCatalog(options) {
 
   const wantedDefault = config.model?.defaultAlias ?? DEFAULT_ALIAS;
   const defaultAlias = entries[wantedDefault] ? wantedDefault : Object.keys(entries)[0];
-  if (!defaultAlias) throw new Error('Không có model nào khả dụng (thiếu API key?)');
+  if (!defaultAlias) throw new Error('No models available (missing API key?)');
 
   let fallbackAlias = config.model?.fallbackAlias ?? FALLBACK_ALIAS;
   if (!entries[fallbackAlias] || fallbackAlias === defaultAlias) {

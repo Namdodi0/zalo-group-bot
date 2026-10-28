@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createCalibrator, createTokenMeter } from '../src/context/token-meter.js';
 
-test('request cộng system + tool + message và áp calibrator', () => {
+test('request sums system + tool + message and applies the calibrator', () => {
   const meter = createTokenMeter({ calibrator: { estimate: (raw) => raw * 2, observe: () => {}, ratio: () => 2 } });
   const result = meter.request({
     systemPrompt: 'abcd'.repeat(8),
@@ -15,21 +15,21 @@ test('request cộng system + tool + message và áp calibrator', () => {
   assert.equal(result.pressure, null);
 });
 
-test('pressure tính theo context window', () => {
+test('pressure is computed from the context window', () => {
   const result = createTokenMeter({ calibrator: { estimate: (raw) => raw, observe: () => {}, ratio: () => 1 } })
     .request({ systemPrompt: 'x'.repeat(160), contextWindow: 100 });
   assert.equal(result.contextWindow, 100);
   assert.ok(result.pressure > 0);
 });
 
-test('observe điều chỉnh tỉ lệ ước lượng', () => {
+test('observe adjusts the estimate ratio', () => {
   const meter = createTokenMeter();
   assert.equal(meter.ratio(), 1);
   meter.observe(100, 200);
   assert.ok(meter.ratio() > 1);
 });
 
-test('calibrator giữ nguyên hợp đồng cũ', () => {
+test('calibrator keeps its previous contract', () => {
   const calibrator = createCalibrator();
   calibrator.observe(100, 150);
   const first = calibrator.ratio();

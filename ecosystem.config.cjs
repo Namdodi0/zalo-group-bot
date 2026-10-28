@@ -1,9 +1,9 @@
 /**
- * PM2 config cho bot Zalo.
+ * PM2 config for the Zalo bot.
  *
  *   pm2 start ecosystem.config.cjs
  *   pm2 save
- *   pm2 startup        # rồi chạy đúng dòng nó in ra
+ *   pm2 startup        # then run exactly the line it prints
  */
 module.exports = {
   apps: [

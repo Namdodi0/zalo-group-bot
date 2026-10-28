@@ -20,7 +20,7 @@ function fakeHttp(payloads, responseBody) {
 }
 
 const standardResponse = {
-  choices: [{ message: { content: 'Xin chào', role: 'assistant' }, finish_reason: 'stop' }],
+  choices: [{ message: { content: 'Hello', role: 'assistant' }, finish_reason: 'stop' }],
   usage: { prompt_tokens: 10, completion_tokens: 5, completion_tokens_details: { reasoning_tokens: 0 } },
 };
 
@@ -36,7 +36,7 @@ function makeClient(http, overrides = {}) {
   });
 }
 
-test('DeepSeek map medium → high, none giữ none', async () => {
+test('DeepSeek maps medium to high, none stays none', async () => {
   const http = fakeHttp([], standardResponse);
   const client = makeClient(http, {
     provider: 'deepseek',
@@ -50,24 +50,24 @@ test('DeepSeek map medium → high, none giữ none', async () => {
   assert.equal(http.calls[1].payload.model, 'deepseek-flash');
 });
 
-test('không gửi max_tokens khi cấu hình null', async () => {
+test('does not send max_tokens when the config is null', async () => {
   const http = fakeHttp([], standardResponse);
   const nim = makeClient(http);
   const result = await nim.chat({ messages: [{ role: 'user', content: 'hi' }], reasoning: 'none', maxTokens: null });
   assert.equal(http.calls.length, 1);
   assert.equal('max_tokens' in http.calls[0].payload, false);
   assert.equal(http.calls[0].payload.reasoning_effort, 'none');
-  assert.equal(result.content, 'Xin chào');
+  assert.equal(result.content, 'Hello');
 });
 
-test('gửi max_tokens khi được đặt', async () => {
+test('sends max_tokens when it is set', async () => {
   const http = fakeHttp([], standardResponse);
   const nim = makeClient(http);
   await nim.chat({ messages: [{ role: 'user', content: 'hi' }], reasoning: 'none', maxTokens: 512 });
   assert.equal(http.calls[0].payload.max_tokens, 512);
 });
 
-test('reasoning auto map sang low, tools được gửi kèm', async () => {
+test('reasoning auto maps to low and tools are sent along', async () => {
   const http = fakeHttp([], standardResponse);
   const nim = makeClient(http);
   await nim.chat({
@@ -80,7 +80,7 @@ test('reasoning auto map sang low, tools được gửi kèm', async () => {
   assert.equal(http.calls[0].payload.tools.length, 1);
 });
 
-test('circuit breaker keyed theo provider+model, không khoá cả provider', async () => {
+test('circuit breaker is keyed by provider+model and does not lock the whole provider', async () => {
   const http = fakeHttp([], standardResponse);
   const client = makeClient(http);
   await client.chat({ messages: [{ role: 'user', content: 'hi' }], reasoning: 'none' });
@@ -93,7 +93,7 @@ test('circuit breaker keyed theo provider+model, không khoá cả provider', as
   assert.equal(http.calls[1].service, 'nim:nvidia/nemotron-3.5-lightning-30b-a3b');
 });
 
-test('cho phép override model (fallback)', async () => {
+test('allows overriding the model (fallback)', async () => {
   const http = fakeHttp([], standardResponse);
   const nim = makeClient(http);
   await nim.chat({
@@ -104,14 +104,14 @@ test('cho phép override model (fallback)', async () => {
   assert.equal(http.calls[0].payload.model, 'nvidia/nemotron-3.5-lightning-30b-a3b');
 });
 
-test('parse tool_calls từ response', async () => {
+test('parses tool_calls from the response', async () => {
   const http = fakeHttp([], {
     choices: [
       {
         message: {
           content: null,
           tool_calls: [
-            { id: 'call-1', type: 'function', function: { name: 'web_search', arguments: '{"query":"giá vàng"}' } },
+            { id: 'call-1', type: 'function', function: { name: 'web_search', arguments: '{"query":"gold price"}' } },
           ],
         },
         finish_reason: 'tool_calls',
@@ -120,19 +120,19 @@ test('parse tool_calls từ response', async () => {
     usage: { prompt_tokens: 12, completion_tokens: 3 },
   });
   const nim = makeClient(http);
-  const result = await nim.chat({ messages: [{ role: 'user', content: 'giá vàng?' }], reasoning: 'none' });
+  const result = await nim.chat({ messages: [{ role: 'user', content: 'gold price?' }], reasoning: 'none' });
   assert.equal(result.toolCalls.length, 1);
   assert.equal(result.toolCalls[0].name, 'web_search');
-  assert.equal(result.toolCalls[0].arguments.query, 'giá vàng');
+  assert.equal(result.toolCalls[0].arguments.query, 'gold price');
   assert.equal(result.finishReason, 'tool_calls');
   assert.equal(result.reasoning, '');
 });
 
-test('bỏ reasoning_content khỏi kết quả trả về', async () => {
+test('drops reasoning_content from the returned result', async () => {
   const http = fakeHttp([], {
     choices: [
       {
-        message: { content: 'Đáp án', reasoning_content: 'suy nghĩ nội bộ' },
+        message: { content: 'Answer', reasoning_content: 'internal thoughts' },
         finish_reason: 'stop',
       },
     ],
@@ -140,11 +140,11 @@ test('bỏ reasoning_content khỏi kết quả trả về', async () => {
   });
   const nim = makeClient(http);
   const result = await nim.chat({ messages: [{ role: 'user', content: 'x' }], reasoning: 'none' });
-  assert.equal(result.content, 'Đáp án');
-  assert.equal(result.reasoning, 'suy nghĩ nội bộ');
+  assert.equal(result.content, 'Answer');
+  assert.equal(result.reasoning, 'internal thoughts');
 });
 
-test('warmup: trả {ok, ms, model}, 1 token, dùng được model override', async () => {
+test('warmup: returns {ok, ms, model}, 1 token, supports a model override', async () => {
   const http = fakeHttp([], standardResponse);
   const client = makeClient(http);
 
@@ -159,7 +159,7 @@ test('warmup: trả {ok, ms, model}, 1 token, dùng được model override', as
   assert.equal(http.calls[1].payload.model, 'nvidia/nemotron-3-ultra-550b-a55b');
 });
 
-test('warmup: lỗi mạng thì trả ok:false, KHÔNG throw', async () => {
+test('warmup: a network error returns ok:false and does NOT throw', async () => {
   const client = makeClient({
     async requestJson() {
       throw new Error('timeout after nim request');

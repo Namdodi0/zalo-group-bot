@@ -5,8 +5,8 @@ const REDIRECT_STATUS = new Set([301, 302, 303, 307, 308]);
 const MAX_REDIRECTS = 3;
 
 /**
- * Chặn địa chỉ nội bộ/loopback/link-local để URL ảnh từ kết quả search không
- * được dùng làm bàn đạp SSRF (metadata cloud, ops server 127.0.0.1, LAN...).
+ * Block internal/loopback/link-local addresses so image URLs from search results are
+ * not usable as an SSRF stepping stone (cloud metadata, ops server 127.0.0.1, LAN...).
  * @param {string} address
  */
 export function isPrivateAddress(address) {
@@ -35,8 +35,8 @@ export function isPrivateAddress(address) {
 }
 
 /**
- * Kiểm tra URL ảnh trước khi gửi cho Zalo / đưa vào model VL.
- * Zalo `sendPhoto` cần URL công khai; model VL cũng cần tải được ảnh.
+ * Check an image URL before sending it to Zalo / passing it to the VL model.
+ * Zalo `sendPhoto` needs a public URL; the VL model must be able to download the image too.
  * @param {{fetchImpl?: typeof fetch, lookup?: (hostname: string) => Promise<string[]>, logger?: import('../logger.js').Logger, ttlMs?: number, failTtlMs?: number, timeoutMs?: number, maxBytes?: number, now?: () => number}} [options]
  */
 export function createImageValidator(options = {}) {
@@ -54,13 +54,13 @@ export function createImageValidator(options = {}) {
   async function assertPublicUrl(url) {
     const host = url.hostname.replace(/^\[|\]$/g, '');
     if (net.isIP(host)) {
-      if (isPrivateAddress(host)) throw new Error(`địa chỉ nội bộ bị chặn (${host})`);
+      if (isPrivateAddress(host)) throw new Error(`internal address blocked (${host})`);
       return;
     }
     const addresses = await lookupHost(host);
     for (const address of addresses) {
       if (isPrivateAddress(address)) {
-        throw new Error(`tên miền trỏ về địa chỉ nội bộ (${host} → ${address})`);
+        throw new Error(`hostname resolves to an internal address (${host} → ${address})`);
       }
     }
   }
@@ -80,8 +80,8 @@ export function createImageValidator(options = {}) {
   }
 
   /**
-   * Tự theo redirect (tối đa 3 hop) để kiểm tra từng đích — `redirect: 'follow'`
-   * sẽ nhảy thẳng vào host nội bộ mà không qua kiểm tra.
+   * Follow redirects manually (at most 3 hops) to check every destination — `redirect: 'follow'`
+   * would jump straight into an internal host without any check.
    * @param {string} url
    * @param {'HEAD'|'GET'} method
    * @param {Record<string,string>} [headers]
@@ -90,7 +90,7 @@ export function createImageValidator(options = {}) {
     let current = new URL(url);
     for (let hop = 0; hop <= MAX_REDIRECTS; hop += 1) {
       if (!/^https?:$/.test(current.protocol)) {
-        throw new Error(`giao thức không hỗ trợ (${current.protocol})`);
+        throw new Error(`unsupported protocol (${current.protocol})`);
       }
       await assertPublicUrl(current);
       const response = await fetchImpl(current.toString(), {
@@ -108,7 +108,7 @@ export function createImageValidator(options = {}) {
       }
       current = new URL(location, current);
     }
-    throw new Error('quá nhiều redirect');
+    throw new Error('too many redirects');
   }
 
   /**
@@ -120,10 +120,10 @@ export function createImageValidator(options = {}) {
     try {
       parsed = new URL(url);
     } catch {
-      return { ok: false, reason: 'URL không hợp lệ' };
+      return { ok: false, reason: 'invalid URL' };
     }
     if (!/^https?:$/.test(parsed.protocol)) {
-      return { ok: false, reason: `giao thức không hỗ trợ (${parsed.protocol})` };
+      return { ok: false, reason: `unsupported protocol (${parsed.protocol})` };
     }
     try {
       await assertPublicUrl(parsed);
@@ -148,24 +148,24 @@ export function createImageValidator(options = {}) {
         response = await request(url, 'GET', { Range: 'bytes=0-1' });
         usedHead = false;
       } catch (error2) {
-        return { ok: false, reason: `không tải được ảnh (${String(/** @type {any} */ (error2)?.message ?? error2)})` };
+        return { ok: false, reason: `failed to fetch image (${String(/** @type {any} */ (error2)?.message ?? error2)})` };
       }
     }
 
-    if (!response) return { ok: false, reason: 'không có phản hồi' };
+    if (!response) return { ok: false, reason: 'no response' };
     if (!response.ok && response.status !== 206) {
       return { ok: false, reason: `HTTP ${response.status}` };
     }
 
     const contentType = (response.headers.get('content-type') ?? '').toLowerCase();
     if (contentType && !contentType.startsWith('image/')) {
-      return { ok: false, reason: `content-type không phải ảnh (${contentType.split(';')[0]})` };
+      return { ok: false, reason: `content-type is not an image (${contentType.split(';')[0]})` };
     }
     if (!contentType && !/\.(png|jpe?g|gif|webp|bmp)$/i.test(parsed.pathname)) {
-      return { ok: false, reason: 'không xác định được định dạng ảnh' };
+      return { ok: false, reason: 'could not determine the image format' };
     }
 
-    // Với GET kèm Range, content-length chỉ là 2 byte → đọc tổng dung lượng từ content-range.
+    // With a ranged GET, content-length is only 2 bytes → read the total size from content-range.
     let bytes;
     const rangeHeader = response.headers.get('content-range');
     if (rangeHeader) {
@@ -176,12 +176,12 @@ export function createImageValidator(options = {}) {
       const lengthHeader = response.headers.get('content-length');
       const parsedLength = lengthHeader ? Number(lengthHeader) : undefined;
       if (parsedLength !== undefined && Number.isFinite(parsedLength)) {
-        // range 0-1 luôn trả 2 byte → không dùng để kết luận dung lượng
+        // a 0-1 range always returns 2 bytes → do not use it to conclude the size
         bytes = !usedHead && parsedLength <= 2 ? undefined : parsedLength;
       }
     }
     if (bytes !== undefined && bytes > maxBytes) {
-      return { ok: false, reason: `ảnh quá lớn (${bytes} bytes)` };
+      return { ok: false, reason: `image too large (${bytes} bytes)` };
     }
 
     try {
@@ -196,7 +196,7 @@ export function createImageValidator(options = {}) {
   /** @param {string} url */
   async function validate(url) {
     const key = String(url ?? '').trim();
-    if (!key) return { ok: false, reason: 'URL rỗng' };
+    if (!key) return { ok: false, reason: 'empty URL' };
     const hit = cached(key);
     if (hit) return hit;
 

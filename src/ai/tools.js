@@ -15,18 +15,18 @@ export function createToolRuntime(options) {
   function definitions() {
     /** @type {any[]} */
     const tools = [];
-    // SEARCH_AUTO=off → model không tự tìm web, nhưng /search vẫn dùng được.
+    // SEARCH_AUTO=off → the model does not search the web on its own, but /search still works.
     if (config.search.enabled && config.search.auto) {
       tools.push({
         type: 'function',
         function: {
           name: 'web_search',
           description:
-            'Tìm kiếm web để lấy thông tin thời gian thực (tin tức, giá cả, thời tiết, sự kiện, sản phẩm). Trả về danh sách tiêu đề + URL + đoạn trích.',
+            'Search the web for real-time information (news, prices, weather, events, products). Returns a list of titles + URLs + snippets.',
           parameters: {
             type: 'object',
             properties: {
-              query: { type: 'string', description: 'Truy vấn tìm kiếm, nên viết bằng tiếng Việt và ngắn gọn' },
+              query: { type: 'string', description: 'Search query; keep it short and natural' },
             },
             required: ['query'],
           },
@@ -38,12 +38,12 @@ export function createToolRuntime(options) {
         type: 'function',
         function: {
           name: 'send_image',
-          description: 'Tìm và gửi một ảnh vào cuộc trò chuyện hiện tại. Dùng khi người dùng xin ảnh/hình.',
+          description: 'Find and send an image into the current conversation. Use when the user asks for a picture.',
           parameters: {
             type: 'object',
             properties: {
-              query: { type: 'string', description: 'Từ khoá ảnh cần tìm, ví dụ "mèo con dễ thương"' },
-              caption: { type: 'string', description: 'Chú thích ngắn cho ảnh (tuỳ chọn)' },
+              query: { type: 'string', description: 'Image keywords to search for, e.g. "cute kitten"' },
+              caption: { type: 'string', description: 'Short caption for the image (optional)' },
             },
             required: ['query'],
           },
@@ -56,13 +56,13 @@ export function createToolRuntime(options) {
         function: {
           name: 'send_sticker',
           description:
-            'Gửi một sticker Zalo phù hợp cảm xúc/ngữ cảnh (chào, vui, buồn, cảm ơn, sinh nhật, mèo...). Dùng khi người dùng muốn phản ứng bằng sticker.',
+            'Send a Zalo sticker that fits the mood/context (greeting, happy, sad, thanks, birthday, cat...). Use when the user wants to react with a sticker.',
           parameters: {
             type: 'object',
             properties: {
               emotion: {
                 type: 'string',
-                description: 'Cảm xúc hoặc tên gói sticker, ví dụ "chào", "vui", "mèo", "sinh nhật"',
+                description: 'Mood or sticker pack name, e.g. "greeting", "happy", "cat", "birthday"',
               },
             },
             required: ['emotion'],
@@ -83,7 +83,7 @@ export function createToolRuntime(options) {
     if (name === 'web_search') return webSearch(args, ctx);
     if (name === 'send_image') return sendImage(args, ctx);
     if (name === 'send_sticker') return sendSticker(args, ctx);
-    return { ok: false, text: `Công cụ không tồn tại: ${name}` };
+    return { ok: false, text: `Tool does not exist: ${name}` };
   }
 
   /**
@@ -92,13 +92,13 @@ export function createToolRuntime(options) {
    */
   async function webSearch(args, ctx = { chatId: '' }) {
     if (!config.search.enabled || !tavily) {
-      return { ok: false, text: 'Web search đang tắt.' };
+      return { ok: false, text: 'Web search is disabled.' };
     }
     if (ctx.deadline && Date.now() > ctx.deadline) {
-      return { ok: false, text: 'Hết thời gian xử lý trước khi kịp tìm web.' };
+      return { ok: false, text: 'Ran out of time before the web search could run.' };
     }
     const query = String(args?.query ?? '').trim().slice(0, 300);
-    if (!query) return { ok: false, text: 'Thiếu từ khoá tìm kiếm.' };
+    if (!query) return { ok: false, text: 'Missing search keywords.' };
     try {
       const data = await tavily.search(query, {
         searchDepth: config.search.depth,
@@ -112,10 +112,10 @@ export function createToolRuntime(options) {
         maxChars: 500,
         maxItems: config.search.maxResults,
       });
-      return { ok: true, text: `Kết quả web_search cho "${query}":\n\n${text}`, data };
+      return { ok: true, text: `web_search results for "${query}":\n\n${text}`, data };
     } catch (error) {
       logger.warn('web_search failed', { error: String(/** @type {any} */ (error)?.message ?? error) });
-      return { ok: false, text: `Web search lỗi: ${String(/** @type {any} */ (error)?.message ?? error)}` };
+      return { ok: false, text: `Web search error: ${String(/** @type {any} */ (error)?.message ?? error)}` };
     }
   }
 
@@ -124,13 +124,13 @@ export function createToolRuntime(options) {
    * @param {{chatId: string, deadline?: number}} ctx
    */
   async function sendImage(args, ctx) {
-    if (!config.image.enabled) return { ok: false, text: 'Tính năng gửi ảnh đang tắt.' };
-    if (!tavily) return { ok: false, text: 'Cần Tavily để tìm ảnh.' };
+    if (!config.image.enabled) return { ok: false, text: 'Image sending is disabled.' };
+    if (!tavily) return { ok: false, text: 'Tavily is required to search for images.' };
     if (ctx.deadline && Date.now() > ctx.deadline) {
-      return { ok: false, text: 'Hết thời gian xử lý trước khi kịp tìm ảnh.' };
+      return { ok: false, text: 'Ran out of time before the image search could run.' };
     }
     const query = String(args?.query ?? '').trim().slice(0, 200);
-    if (!query) return { ok: false, text: 'Thiếu từ khoá ảnh.' };
+    if (!query) return { ok: false, text: 'Missing image keywords.' };
 
     try {
       const data = await tavily.search(query, {
@@ -166,14 +166,14 @@ export function createToolRuntime(options) {
         await zalo.sendPhoto(ctx.chatId, url, caption);
         metrics?.inc('tool.sendImage.ok');
         logger.info('image sent', { query, url, icon: '🖼️' });
-        return { ok: true, text: `Đã gửi ảnh "${query}" cho người dùng.`, data: { url } };
+        return { ok: true, text: `Sent the image "${query}" to the user.`, data: { url } };
       }
 
       metrics?.inc('tool.sendImage.fail');
-      return { ok: false, text: 'Không tìm được ảnh hợp lệ để gửi.' };
+      return { ok: false, text: 'Could not find a valid image to send.' };
     } catch (error) {
       logger.warn('send_image failed', { error: String(/** @type {any} */ (error)?.message ?? error) });
-      return { ok: false, text: `Gửi ảnh lỗi: ${String(/** @type {any} */ (error)?.message ?? error)}` };
+      return { ok: false, text: `Failed to send image: ${String(/** @type {any} */ (error)?.message ?? error)}` };
     }
   }
 
@@ -182,24 +182,24 @@ export function createToolRuntime(options) {
    * @param {{chatId: string, deadline?: number}} ctx
    */
   async function sendSticker(args, ctx) {
-    if (!config.sticker.enabled) return { ok: false, text: 'Tính năng sticker đang tắt.' };
-    if (!stickers) return { ok: false, text: 'Chưa có catalog sticker.' };
+    if (!config.sticker.enabled) return { ok: false, text: 'Stickers are disabled.' };
+    if (!stickers) return { ok: false, text: 'No sticker catalog yet.' };
     if (ctx.deadline && Date.now() > ctx.deadline) {
-      return { ok: false, text: 'Hết thời gian xử lý trước khi kịp gửi sticker.' };
+      return { ok: false, text: 'Ran out of time before the sticker could be sent.' };
     }
     const query = String(args?.emotion ?? args?.query ?? '').trim();
     const item = (query && stickers.find(query)) || stickers.random();
-    if (!item) return { ok: false, text: 'Không tìm được sticker phù hợp.' };
+    if (!item) return { ok: false, text: 'Could not find a matching sticker.' };
 
     try {
       await zalo.sendSticker(ctx.chatId, item.id);
       metrics?.inc('tool.sendSticker.ok');
       logger.info('sticker sent', { name: item.name, id: item.id, icon: '🧩' });
-      return { ok: true, text: `Đã gửi sticker "${item.name}".` };
+      return { ok: true, text: `Sent the sticker "${item.name}".` };
     } catch (error) {
       metrics?.inc('tool.sendSticker.fail');
       logger.warn('send_sticker failed', { error: String(/** @type {any} */ (error)?.message ?? error) });
-      return { ok: false, text: `Gửi sticker lỗi: ${String(/** @type {any} */ (error)?.message ?? error)}` };
+      return { ok: false, text: `Failed to send sticker: ${String(/** @type {any} */ (error)?.message ?? error)}` };
     }
   }
 

@@ -56,9 +56,9 @@ export const SECTION_ORDER = {
 const TOOL_GUIDANCE = {
   web_search:
     'For real-time or uncertain facts (prices, weather, news, scores, product prices, recent events) call the `web_search` tool and answer from its results, citing URLs.',
-  send_image: 'When the user asks for a picture ("gửi ảnh mèo", "cho xem hình ..."), call the `send_image` tool.',
+  send_image: 'When the user asks for a picture ("send me a cat photo", "show me a picture ..."), call the `send_image` tool.',
   send_sticker:
-    'When the user wants a sticker reaction ("gửi sticker", "sticker chào", "sticker mèo"...), call the `send_sticker` tool with an emotion keyword or pack name.',
+    'When the user wants a sticker reaction ("send a sticker", "hello sticker", "cat sticker"...), call the `send_sticker` tool with an emotion keyword or pack name.',
 };
 
 export const TOOL_ORDER = ['web_search', 'send_image', 'send_sticker'];
@@ -77,12 +77,12 @@ const RULES = [
 ];
 
 /**
- * Đăng ký toàn bộ section của prompt Zalo vào registry.
+ * Register every Zalo prompt section with the registry.
  * @param {ReturnType<typeof import('./registry.js').createPromptRegistry>} registry
  * @param {{botName?: string, chatType?: string, imageEnabled?: boolean, tone?: string}} [options]
  */
 export function registerZaloSections(registry, options = {}) {
-  const botName = options.botName || 'trợ lý AI';
+  const botName = options.botName || 'AI assistant';
   const inGroup = (options.chatType ?? 'GROUP') === 'GROUP';
   const imageEnabled = Boolean(options.imageEnabled);
   const toneRules = TONE_RULES[options.tone ?? 'friendly'] ?? [];

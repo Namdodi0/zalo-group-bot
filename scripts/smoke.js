@@ -41,7 +41,7 @@ async function main() {
     report('Zalo getMe', false, String(/** @type {any} */ (error)?.message ?? error));
   }
 
-  // 2. DeepSeek (model chính)
+  // 2. DeepSeek (primary model)
   if (config.deepseek.apiKey) {
     const deepseek = createOpenAiCompatAdapter({
       provider: 'deepseek',
@@ -57,8 +57,8 @@ async function main() {
       const started = Date.now();
       const response = await deepseek.chat({
         messages: [
-          { role: 'system', content: 'Trả lời cực ngắn gọn bằng tiếng Việt.' },
-          { role: 'user', content: 'Nói "xin chào" và cho biết bạn là model gì.' },
+          { role: 'system', content: 'Answer extremely briefly, in Vietnamese.' },
+          { role: 'user', content: 'Say "hello" and tell me which model you are.' },
         ],
         reasoning: 'none',
         maxTokens: config.ai.maxTokens,
@@ -74,10 +74,10 @@ async function main() {
       report(`DeepSeek (${config.deepseek.model})`, false, String(/** @type {any} */ (error)?.message ?? error));
     }
   } else {
-    report('DeepSeek', true, 'bỏ qua (chưa cấu hình DEEPSEEK_API_KEY)');
+    report('DeepSeek', true, 'skipped (DEEPSEEK_API_KEY not configured)');
   }
 
-  // 3. NIM (model dự phòng)
+  // 3. NIM (fallback model)
   if (config.nim.apiKey) {
     const nim = createOpenAiCompatAdapter({
       provider: 'nim',
@@ -92,7 +92,7 @@ async function main() {
     try {
       const started = Date.now();
       const response = await nim.chat({
-        messages: [{ role: 'user', content: 'Chào bạn, trả lời 1 câu tiếng Việt.' }],
+        messages: [{ role: 'user', content: 'Hi, answer with one Vietnamese sentence.' }],
         reasoning: 'none',
       });
       report(`NIM fallback (${config.nim.fallbackModel})`, Boolean(response.content), `${Date.now() - started}ms`);
@@ -101,7 +101,7 @@ async function main() {
       report(`NIM fallback (${config.nim.fallbackModel})`, false, String(/** @type {any} */ (error)?.message ?? error));
     }
   } else {
-    report('NIM fallback', true, 'bỏ qua (chưa cấu hình NIM_API_KEY)');
+    report('NIM fallback', true, 'skipped (NIM_API_KEY not configured)');
   }
 
   // 4. Tavily search
@@ -118,21 +118,21 @@ async function main() {
     });
     try {
       const started = Date.now();
-      const data = await tavily.search('giá vàng hôm nay', {
+      const data = await tavily.search('gold price today', {
         searchDepth: config.search.depth,
         maxResults: 3,
         includeImages: true,
         country: config.search.country,
       });
       images = data.images;
-      report('Tavily search', data.results.length > 0, `${Date.now() - started}ms · ${data.results.length} kết quả · ${data.images.length} ảnh`);
+      report('Tavily search', data.results.length > 0, `${Date.now() - started}ms · ${data.results.length} results · ${data.images.length} images`);
       if (data.results[0]) console.log(`       ↳ ${data.results[0].title}`);
     } catch (error) {
       failures += 1;
       report('Tavily search', false, String(/** @type {any} */ (error)?.message ?? error));
     }
   } else {
-    report('Tavily search', true, 'đang tắt (SEARCH_ENABLED=off)');
+    report('Tavily search', true, 'disabled (SEARCH_ENABLED=off)');
   }
 
   // 5. Image validator
@@ -143,15 +143,15 @@ async function main() {
     const check = await validator.validate(sampleUrl);
     report('Image validator', check.ok, check.ok ? `${check.contentType ?? 'image'}` : `${check.reason} — ${sampleUrl}`);
   } else {
-    report('Image validator', true, 'bỏ qua (không có ảnh mẫu)');
+    report('Image validator', true, 'skipped (no sample image)');
   }
 
   console.log('');
   if (failures) {
-    console.log(`${failures} mục lỗi.`);
+    console.log(`${failures} checks failed.`);
     process.exitCode = 1;
   } else {
-    console.log('Smoke test hoàn tất.');
+    console.log('Smoke test complete.');
   }
 }
 

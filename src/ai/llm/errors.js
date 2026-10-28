@@ -1,6 +1,6 @@
 import { CircuitOpenError, HttpError } from '../../http.js';
 
-/** Mã lỗi ổn định — consumer định tuyến theo code, không theo message. */
+/** Stable error codes — consumers route by code, not by message. */
 export const LLM_ERROR = {
   NO_ADAPTER: 'NO_ADAPTER',
   MISSING_CREDENTIAL: 'MISSING_CREDENTIAL',
@@ -63,7 +63,7 @@ function looksLikeContextOverflow(text) {
 }
 
 /**
- * Chuẩn hoá mọi lỗi transport/provider thành LlmError.
+ * Normalize any transport/provider error into an LlmError.
  * @param {unknown} error
  * @param {{provider?: string, model?: string}} [meta]
  * @returns {LlmError}

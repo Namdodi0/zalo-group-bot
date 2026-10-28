@@ -38,7 +38,7 @@ const defaultSleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 function withTimeout(signal, timeoutMs) {
   const timeout = AbortSignal.timeout(Math.max(1, timeoutMs));
   if (!signal) return timeout;
-  // @ts-ignore AbortSignal.any có từ Node 20.3
+  // @ts-ignore AbortSignal.any is available since Node 20.3
   return AbortSignal.any([signal, timeout]);
 }
 
@@ -112,7 +112,7 @@ export function createHttp(options = {}) {
     return { failures: state.failures, open: state.openedUntil > now(), openedUntil: state.openedUntil };
   }
 
-  /** Trạng thái tất cả service đã từng gọi (dùng cho /status, /metrics). */
+  /** State of every service that has been called (used by /status, /metrics). */
   function listStates() {
     return [...breakers.entries()].map(([service, state]) => ({
       service,
@@ -147,7 +147,7 @@ export function createHttp(options = {}) {
   }
 
   /**
-   * Gọi HTTP và trả JSON, có retry + circuit breaker.
+   * Perform an HTTP call and return JSON, with retry + circuit breaker.
    * @param {string} url
    * @param {{method?: string, headers?: Record<string,string>, body?: string, timeoutMs?: number, retries?: number, service?: string, label?: string, signal?: AbortSignal}} [opts]
    */
@@ -186,9 +186,9 @@ export function createHttp(options = {}) {
         const data = text ? JSON.parse(text) : null;
         return { status: response.status, data, latencyMs: latency, headers: response.headers };
       } catch (error) {
-        // Caller chủ động abort (hết deadline) → không retry, không tính vào circuit breaker.
+        // Caller aborted deliberately (deadline reached) → no retry, not counted by the circuit breaker.
         if (opts.signal?.aborted) {
-          const aborted = new HttpError(`${service} bị huỷ bởi caller`, {
+          const aborted = new HttpError(`${service} aborted by caller`, {
             service,
             url,
             retryable: false,
@@ -198,7 +198,7 @@ export function createHttp(options = {}) {
         }
         const err = normalize(error, { service, url });
         if (error instanceof SyntaxError) {
-          throw new HttpError(`${service} trả về JSON không hợp lệ`, {
+          throw new HttpError(`${service} returned invalid JSON`, {
             service,
             url,
             body: String(error.message).slice(0, 200),
@@ -224,7 +224,7 @@ export function createHttp(options = {}) {
   }
 
   /**
-   * Mở một stream (SSE). Chỉ retry khi chưa đọc được dữ liệu nào (lỗi mở kết nối/HTTP status).
+   * Open a stream (SSE). Retry only while no data has been read yet (connection/HTTP status error).
    * @param {string} url
    * @param {{method?: string, headers?: Record<string,string>, body?: string, timeoutMs?: number, service?: string, retries?: number, signal?: AbortSignal}} [opts]
    * @returns {Promise<Response>}
@@ -259,7 +259,7 @@ export function createHttp(options = {}) {
         return response;
       } catch (error) {
         if (opts.signal?.aborted) {
-          throw new HttpError(`${service} bị huỷ bởi caller`, {
+          throw new HttpError(`${service} aborted by caller`, {
             service,
             url,
             retryable: false,

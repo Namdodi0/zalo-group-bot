@@ -28,7 +28,7 @@ function asString(value) {
 }
 
 /**
- * Zalo có thể trả `result` là object hoặc array tuỳ phiên bản.
+ * Zalo may return `result` as an object or an array depending on the version.
  * @param {unknown} payload
  * @returns {unknown[]}
  */
@@ -69,7 +69,7 @@ export function toEvent(item) {
     chatId,
     chatType,
     senderId: asString(from.id),
-    senderName: asString(from.display_name) || asString(from.name) || 'Thành viên',
+    senderName: asString(from.display_name) || asString(from.name) || 'Member',
     isBot: from.is_bot === true,
     text: asString(message.text) || asString(message.caption),
     imageUrl: asString(message.photo) || null,

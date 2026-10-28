@@ -1,7 +1,7 @@
-# Đóng gói zalo-group-bot để deploy (bỏ node_modules, data/)
+# Package zalo-group-bot for deployment (leaves out node_modules, data/)
 #
-#   npm run pack                                # KHÔNG kèm .env (an toàn để chia sẻ)
-#   npm run pack -- -IncludeEnv                 # KÈM .env (zip chứa secret - chỉ dùng cá nhân)
+#   npm run pack                                # WITHOUT .env (safe to share)
+#   npm run pack -- -IncludeEnv                 # WITH .env (the zip holds secrets - personal use only)
 #   npm run pack -- -Out dist/custom.zip
 [CmdletBinding()]
 param(
@@ -18,7 +18,7 @@ if (-not $Out) {
 }
 $outPath = if ([System.IO.Path]::IsPathRooted($Out)) { $Out } else { Join-Path $root $Out }
 
-# Chỉ những thứ cần trên server. KHÔNG có: .env, data/, node_modules/, dist/
+# Only what is needed on the server. NO: .env, data/, node_modules/, dist/
 $include = @(
   'src',
   'scripts',
@@ -45,22 +45,22 @@ try {
     if (Test-Path $src) {
       Copy-Item -Path $src -Destination $staging -Recurse -Force
     } else {
-      Write-Warning "bo qua (khong ton tai): $item"
+      Write-Warning "skipped (does not exist): $item"
     }
   }
 
-  # Kèm .env nếu được yêu cầu rõ ràng
+  # Include .env only when explicitly requested
   if ($IncludeEnv) {
     $envPath = Join-Path $root '.env'
     if (Test-Path $envPath) {
-      # Ghi bản .env CHỈ ASCII, KHÔNG BOM: panel/host đọc file bằng latin-1 hoặc
-      # không hiểu BOM sẽ làm hỏng comment tiếng Việt (thành "khÃ´ng commit").
-      # Chỉ giữ dòng KEY=VALUE, comment viết lại bằng ASCII không dấu.
+      # Write the .env as ASCII ONLY, NO BOM: a panel/host that reads the file as latin-1 or
+      # does not understand a BOM will mangle non-ASCII comments into mojibake.
+      # Keep only KEY=VALUE lines, rewrite comments as plain ASCII.
       $stagedEnv = Join-Path $staging '.env'
       $lines = @(
-        '# zalo-group-bot - env cho hosting panel (ASCII, khong BOM)',
-        '# Chua token/key that. Khong chia se file nay.',
-        '# Neu /home/container khong ghi duoc (EACCES mkdir data), doi:',
+        '# zalo-group-bot - env for hosting panels (ASCII, no BOM)',
+        '# Holds real tokens/keys. Do not share this file.',
+        '# If /home/container is not writable (EACCES mkdir data), change:',
         '#   DATA_DIR=/tmp/zalo-data',
         ''
       )
@@ -70,9 +70,9 @@ try {
         }
       }
       [System.IO.File]::WriteAllLines($stagedEnv, $lines, (New-Object System.Text.UTF8Encoding($false)))
-      Write-Host "DA KEM .env (chua token/key that) - chi dung ca nhan, dung gui zip nay cho ai" -ForegroundColor Yellow
+      Write-Host "INCLUDED .env (holds real tokens/keys) - personal use only, never send this zip to anyone" -ForegroundColor Yellow
     } else {
-      Write-Warning "khong thay .env de kem"
+      Write-Warning "no .env found to include"
     }
   }
 
@@ -88,9 +88,9 @@ try {
   if (Test-Path $outPath) { Remove-Item $outPath -Force }
 
   $files = Get-ChildItem -Path $staging -Recurse -File
-  # QUAN TRỌNG: Compress-Archive của Windows ghi entry separator là '\', làm unzip
-  # trên Linux tạo file phẳng tên "src\index.js" (không có thư mục src/).
-  # Tự ghi zip để entry name luôn dùng '/' đúng chuẩn.
+  # IMPORTANT: Windows' Compress-Archive writes '\' as the entry separator, which makes unzip
+  # on Linux create flat files named "src\index.js" (no src/ directory).
+  # Write the zip ourselves so entry names always use '/' as the standard requires.
   Add-Type -AssemblyName System.IO.Compression
   Add-Type -AssemblyName System.IO.Compression.FileSystem
   $fs = [System.IO.File]::Open($outPath, [System.IO.FileMode]::Create)
@@ -113,7 +113,7 @@ try {
   $files = Get-ChildItem -Path $staging -Recurse -File
   $sizeKb = [math]::Round(((Get-Item $outPath).Length / 1KB), 1)
 
-  # Tự kiểm tra separator: nếu còn entry chứa '\' thì báo động
+  # Self-check the separator: warn if any entry still contains '\'
   $zip = [System.IO.Compression.ZipFile]::OpenRead($outPath)
   try {
     $bad = @($zip.Entries | Where-Object { $_.FullName -like '*\*' })
@@ -122,22 +122,22 @@ try {
     $zip.Dispose()
   }
   if ($slashes -gt 0) {
-    Write-Warning "co $slashes entry dung backslash - unzip tren Linux se sai"
+    Write-Warning "found $slashes entries using backslash - unzip on Linux will be wrong"
   }
 
   Write-Host ""
-  Write-Host "Da dong goi: $outPath" -ForegroundColor Green
-  Write-Host ("  {0} file, {1} KB (nen), separator: {2}" -f $files.Count, $sizeKb, $(if ($slashes -eq 0) { "OK ('/')" } else { "LOI ('\')" }))
+  Write-Host "Packaged: $outPath" -ForegroundColor Green
+  Write-Host ("  {0} files, {1} KB (compressed), separator: {2}" -f $files.Count, $sizeKb, $(if ($slashes -eq 0) { "OK ('/')" } else { "ERROR ('\')" }))
   Write-Host ""
-  Write-Host "Kiem tra:" -ForegroundColor Cyan
+  Write-Host "Checks:" -ForegroundColor Cyan
   if ($IncludeEnv) {
-    Write-Host "  - .env CO trong goi (chua secret!) -> panel phai chay: node --env-file-if-exists=.env src/index.js"
-    Write-Host "  - dung gui zip nay cho ai; upload xong thi xoa khoi may"
+    Write-Host "  - .env IS in the package (holds secrets!) -> the panel must run: node --env-file-if-exists=.env src/index.js"
+    Write-Host "  - do not send this zip to anyone; delete it from your machine after uploading"
   } else {
-    Write-Host "  - .env KHONG co trong goi -> gui rieng hoac nhap bien moi truong trong panel"
+    Write-Host "  - .env is NOT in the package -> send it separately or enter the variables in the panel"
   }
-  Write-Host "  - data/ KHONG co -> lich su chat o lai may dev"
-  Write-Host "  - node_modules KHONG co -> server chi can Node >= 22.9"
+  Write-Host "  - data/ is NOT included -> the chat history stays on the dev machine"
+  Write-Host "  - node_modules is NOT included -> the server only needs Node >= 22.9"
 } finally {
   if (Test-Path $staging) { Remove-Item -Path $staging -Recurse -Force -ErrorAction SilentlyContinue }
 }

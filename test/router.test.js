@@ -20,7 +20,7 @@ function makeService(providers = ['deepseek', 'nim']) {
   };
 }
 
-test('router: mặc định deepseek, /model đổi theo record, fallback nim-light', async () => {
+test('router: defaults to deepseek, /model changes it per record, fallback nim-light', async () => {
   const config = makeConfig();
   const service = makeService();
   const router = createModelRouter({ config, service, logger: silentLogger });
@@ -29,11 +29,11 @@ test('router: mặc định deepseek, /model đổi theo record, fallback nim-li
   assert.equal(router.fallbackAlias, 'nim-light');
   assert.equal(router.resolve(null).alias, 'deepseek');
   assert.equal(router.resolve({ meta: { model: 'pro' } }).model, 'deepseek-v4-pro');
-  assert.equal(router.resolve({ meta: { model: 'không-tồn-tại' } }).alias, 'deepseek');
+  assert.equal(router.resolve({ meta: { model: 'does-not-exist' } }).alias, 'deepseek');
 
   assert.equal(router.find('nim').model, 'nvidia/nemotron-3.5-super-vl-120b-a12b');
   assert.equal(router.find('deepseek').alias, 'deepseek');
-  assert.equal(router.find('không có'), null);
+  assert.equal(router.find('no such model'), null);
 
   await router.chat({ record: { meta: { model: 'nim' } }, messages: [] });
   assert.equal(service.calls[0].provider, 'nim');
@@ -45,7 +45,7 @@ test('router: mặc định deepseek, /model đổi theo record, fallback nim-li
   assert.equal(service.calls[2].provider, 'nim');
 });
 
-test('router: alias ultra trỏ tới Nemotron 3 Ultra, đổi được trong chat', async () => {
+test('router: the ultra alias points at Nemotron 3 Ultra and is switchable in chat', async () => {
   const config = makeConfig();
   const service = makeService();
   const router = createModelRouter({ config, service, logger: silentLogger });
@@ -59,7 +59,7 @@ test('router: alias ultra trỏ tới Nemotron 3 Ultra, đổi được trong ch
   assert.equal(service.calls[0].model, 'nvidia/nemotron-3-ultra-550b-a55b');
 });
 
-test('router: alias của provider chưa cấu hình bị bỏ qua', () => {
+test('router: an alias whose provider is not configured is skipped', () => {
   const config = makeConfig({ model: { defaultAlias: 'deepseek', fallbackAlias: 'nim-light' } });
   const router = createModelRouter({ config, service: makeService(['nim']), logger: silentLogger });
   assert.equal(router.list().some((item) => item.provider === 'deepseek'), false);
@@ -67,7 +67,7 @@ test('router: alias của provider chưa cấu hình bị bỏ qua', () => {
   assert.equal(router.fallbackAlias, 'nim-light');
 });
 
-test('router: warmup chọn đúng provider và model của alias', async () => {
+test('router: warmup picks the right provider and model for the alias', async () => {
   const config = makeConfig();
   const service = makeService();
   const router = createModelRouter({ config, service, logger: silentLogger });

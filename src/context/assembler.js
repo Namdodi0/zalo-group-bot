@@ -2,18 +2,18 @@ import { MESSAGE_KIND } from './record.js';
 import { estimateMessageTokens } from './token-meter.js';
 
 /**
- * Dựng request từ record.
+ * Build a request from a record.
  *
- * Bất biến "model-visible means logged": mọi message/tool/summary gửi model đều
- * nằm trong record; system prompt, tool schema và context runtime là hàm thuần
- * của config + record nên luôn tái dựng được từ dữ liệu đã lưu.
+ * Invariant "model-visible means logged": every message/tool/summary sent to the
+ * model lives in the record; the system prompt, tool schema and runtime context are
+ * pure functions of config + record, so they can always be rebuilt from stored data.
  */
 
 const DEFAULT_MAX_MESSAGE_CHARS = 12_000;
 
 /**
  * @param {string} text
- * @param {number} limit 0 = không cắt
+ * @param {number} limit 0 = no clipping
  */
 function clip(text, limit) {
   const value = String(text ?? '');
@@ -79,7 +79,7 @@ export function assembleRequest(input) {
 
   for (let index = all.length - 1; index >= 0; index -= 1) {
     const message = all[index];
-    // Summary là bộ nhớ nén: luôn giữ, và cắt mọi thứ cũ hơn nó.
+    // Summary is compressed memory: always keep it, and cut everything older than it.
     if ((message.kind ?? MESSAGE_KIND.TURN) === MESSAGE_KIND.SUMMARY) {
       keptIndexes.unshift(index);
       dropped = index;
@@ -96,14 +96,14 @@ export function assembleRequest(input) {
     used += cost;
   }
 
-  // Không bao giờ mở đầu bằng tool-result mồ côi (tool-call của nó đã bị cắt).
+  // Never start with an orphaned tool-result (its tool-call was cut).
   let start = keptIndexes.length ? keptIndexes[0] : all.length;
   while (start < all.length && (all[start].kind ?? '') === MESSAGE_KIND.TOOL_RESULT) {
     start += 1;
     dropped += 1;
   }
-  // Summary là bộ nhớ nén duy nhất còn lại: giữ bản mới nhất kể cả khi nó nằm
-  // ngoài range vừa trim (mọi message cũ hơn summary đã bị bỏ).
+  // Summary is the only compressed memory left: keep the newest one even when it
+  // falls outside the range just trimmed (every message older than it was dropped).
   let kept = all.slice(start);
   for (let index = start - 1; index >= 0; index -= 1) {
     if ((all[index].kind ?? '') === MESSAGE_KIND.SUMMARY) {

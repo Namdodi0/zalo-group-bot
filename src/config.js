@@ -14,13 +14,13 @@ import { VERSION } from './version.js';
 const BOOL_TRUE = new Set(['1', 'on', 'true', 'yes', 'y']);
 const BOOL_FALSE = new Set(['0', 'off', 'false', 'no', 'n', '']);
 
-// Thư mục gốc của repo, tính từ file này (src/..) — KHÔNG phụ thuộc cwd.
-// Panel/pm2/systemd có thể khởi động bot với cwd khác, làm DATA_DIR tương đối
-// trỏ sang một thư mục mới tinh và context "biến mất" sau mỗi lần restart.
+// Root directory of the repo, derived from this file (src/..) — NOT dependent on cwd.
+// Panel/pm2/systemd may start the bot with a different cwd, which makes a relative DATA_DIR
+// point at a brand-new directory and the context "disappear" after every restart.
 const PROJECT_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
 /**
- * DATA_DIR nằm trong thư mục tạm thì chắc chắn mất khi restart/redeploy.
+ * A DATA_DIR inside a temp directory is guaranteed to be lost on restart/redeploy.
  * @param {string} dir
  */
 export function isEphemeralDataDir(dir) {
@@ -51,7 +51,7 @@ function readBool(env, key, fallback) {
   const value = String(raw).trim().toLowerCase();
   if (BOOL_TRUE.has(value)) return true;
   if (BOOL_FALSE.has(value)) return false;
-  throw new ConfigError(`${key} phải là on/off (nhận: "${raw}")`);
+  throw new ConfigError(`${key} must be on/off (got: "${raw}")`);
 }
 
 /** @param {Record<string, unknown>} env @param {string} key @param {string} fallback */
@@ -73,13 +73,13 @@ function readInt(env, key, fallback, bounds = {}) {
   if (!raw) return fallback;
   const value = Number(raw);
   if (!Number.isFinite(value) || !Number.isInteger(value)) {
-    throw new ConfigError(`${key} phải là số nguyên (nhận: "${raw}")`);
+    throw new ConfigError(`${key} must be an integer (got: "${raw}")`);
   }
   if (bounds.min !== undefined && value < bounds.min) {
-    throw new ConfigError(`${key} phải >= ${bounds.min} (nhận: ${value})`);
+    throw new ConfigError(`${key} must be >= ${bounds.min} (got: ${value})`);
   }
   if (bounds.max !== undefined && value > bounds.max) {
-    throw new ConfigError(`${key} phải <= ${bounds.max} (nhận: ${value})`);
+    throw new ConfigError(`${key} must be <= ${bounds.max} (got: ${value})`);
   }
   return value;
 }
@@ -92,7 +92,7 @@ function readList(env, key) {
     .filter(Boolean);
 }
 
-/** Rút gọn secret để in ra log/an toàn. */
+/** Shorten a secret so it is safe to print in logs. */
 export function maskSecret(value) {
   if (!value) return '(empty)';
   const text = String(value);
@@ -100,7 +100,7 @@ export function maskSecret(value) {
   return `${text.slice(0, 4)}…${text.slice(-4)}`;
 }
 
-/** Liệt kê các secret cần redact trong log. */
+/** List the secrets that must be redacted in logs. */
 export function collectSecrets(config) {
   return [
     config.zalo.token,
@@ -127,30 +127,30 @@ const CLI_OPTIONS = {
   help: { type: 'boolean' },
 };
 
-export const HELP_TEXT = `zalo-group-bot — bot Zalo cho group chat (NVIDIA NIM + Tavily)
+export const HELP_TEXT = `zalo-group-bot — Zalo bot for group chats (NVIDIA NIM + Tavily)
 
-Cách dùng: node index.js [flags]      (.env được tự nạp từ thư mục đang chạy)
+Usage: node index.js [flags]      (.env is loaded automatically from the working directory)
 
 Flags:
-  --model <alias>     Model mặc định: deepseek | pro | nim | ultra | nim-light
+  --model <alias>     Default model: deepseek | pro | nim | ultra | nim-light
   --mode <m>          polling | webhook
   --think <mode>      none | low | medium | high | auto
-  --max-tokens <n>    Giới hạn số token sinh ra (bỏ trống = không giới hạn)
-  --progressive <m>   auto | on | off  (gửi tách đoạn khi trả lời chậm)
-  --no-progressive    Tắt gửi tách đoạn
-  --no-search         Tắt web search
-  --no-typing         Không gửi trạng thái "đang soạn tin"
-  --dry-run           Không gửi tin nhắn thật (chỉ log)
-  --once              Chỉ nhận 1 lượt update rồi thoát (để test)
-  --verbose           Log mức debug
-  --json              Log dạng JSON (mặc định là pretty, có màu + icon)
-  --help              In trợ giúp
+  --max-tokens <n>    Cap on generated tokens (empty = unlimited)
+  --progressive <m>   auto | on | off  (send chunked replies on slow answers)
+  --no-progressive    Disable chunked replies
+  --no-search         Disable web search
+  --no-typing         Do not send the "typing" status
+  --dry-run           Do not send real messages (log only)
+  --once              Handle a single update then exit (for testing)
+  --verbose           Debug-level logging
+  --json              JSON logs (default is pretty, with colors + icons)
+  --help              Print this help
 
-Biến môi trường: xem .env.example`;
+Environment variables: see .env.example`;
 
 /**
- * Secret webhook: ưu tiên env; nếu thiếu thì sinh 1 lần và lưu vào data/
- * để restart không làm secret đổi (tránh mọi request bị 403).
+ * Webhook secret: prefer the env; if missing, generate it once and store it in data/
+ * so a restart does not change the secret (which would make every request fail with 403).
  * @param {Record<string, unknown>} env
  * @param {string} dataDir
  * @param {string} mode
@@ -158,7 +158,7 @@ Biến môi trường: xem .env.example`;
 function resolveWebhookSecret(env, dataDir, mode) {
   const fromEnv = readStr(env, 'WEBHOOK_SECRET');
   if (fromEnv) {
-    if (fromEnv.length < 8) throw new ConfigError('WEBHOOK_SECRET phải có ít nhất 8 ký tự');
+    if (fromEnv.length < 8) throw new ConfigError('WEBHOOK_SECRET must be at least 8 characters');
     return fromEnv;
   }
   if (mode !== 'webhook') return '';
@@ -168,7 +168,7 @@ function resolveWebhookSecret(env, dataDir, mode) {
     const existing = fs.readFileSync(file, 'utf8').trim();
     if (existing.length >= 8) return existing;
   } catch {
-    // chưa có file → sinh mới bên dưới
+    // no file yet → generate one below
   }
 
   const generated = crypto.randomBytes(24).toString('hex');
@@ -176,7 +176,7 @@ function resolveWebhookSecret(env, dataDir, mode) {
     fs.mkdirSync(dataDir, { recursive: true });
     fs.writeFileSync(file, generated, { encoding: 'utf8', mode: 0o600 });
   } catch {
-    // không lưu được thì vẫn dùng secret tạm cho phiên này
+    // if it cannot be saved, still use a temporary secret for this session
   }
   return generated;
 }
@@ -203,31 +203,31 @@ export function loadConfig(input = {}) {
 
   const mode = String(cli.mode ?? readStr(env, 'MODE', 'polling')).toLowerCase();
   if (mode !== 'polling' && mode !== 'webhook') {
-    throw new ConfigError(`MODE phải là "polling" hoặc "webhook" (nhận: "${mode}")`);
+    throw new ConfigError(`MODE must be "polling" or "webhook" (got: "${mode}")`);
   }
 
   const reasoning = String(
     cli.think ?? readStr(env, 'AI_REASONING', readStr(env, 'NIM_REASONING', 'none')),
   ).toLowerCase();
   if (!['none', 'low', 'medium', 'high', 'auto'].includes(reasoning)) {
-    throw new ConfigError(`AI_REASONING phải là none|low|medium|high|auto (nhận: "${reasoning}")`);
+    throw new ConfigError(`AI_REASONING must be none|low|medium|high|auto (got: "${reasoning}")`);
   }
 
   let progressive = String(
     cli['no-progressive'] ? 'off' : cli.progressive ?? readStr(env, 'PROGRESSIVE', 'auto'),
   ).toLowerCase();
   if (!['auto', 'on', 'off'].includes(progressive)) {
-    throw new ConfigError(`PROGRESSIVE phải là auto|on|off (nhận: "${progressive}")`);
+    throw new ConfigError(`PROGRESSIVE must be auto|on|off (got: "${progressive}")`);
   }
 
   const logFormat = String(cli.json ? 'json' : readStr(env, 'LOG_FORMAT', 'pretty')).toLowerCase();
   if (!['pretty', 'json'].includes(logFormat)) {
-    throw new ConfigError(`LOG_FORMAT phải là pretty hoặc json (nhận: "${logFormat}")`);
+    throw new ConfigError(`LOG_FORMAT must be pretty or json (got: "${logFormat}")`);
   }
 
   const logColor = readStr(env, 'LOG_COLOR', 'auto').toLowerCase();
   if (!['auto', 'always', 'never'].includes(logColor)) {
-    throw new ConfigError(`LOG_COLOR phải là auto|always|never (nhận: "${logColor}")`);
+    throw new ConfigError(`LOG_COLOR must be auto|always|never (got: "${logColor}")`);
   }
 
   const maxTokensRaw =
@@ -236,14 +236,14 @@ export function loadConfig(input = {}) {
   if (maxTokensRaw) {
     const parsed = Number(maxTokensRaw);
     if (!Number.isInteger(parsed) || parsed < 0) {
-      throw new ConfigError(`NIM_MAX_TOKENS phải là số nguyên >= 0 hoặc để trống (nhận: "${maxTokensRaw}")`);
+      throw new ConfigError(`NIM_MAX_TOKENS must be an integer >= 0 or left empty (got: "${maxTokensRaw}")`);
     }
-    // 0 = không giới hạn (giống để trống)
+    // 0 = unlimited (same as leaving it empty)
     maxTokens = parsed === 0 ? null : parsed;
   }
 
   const token = readStr(env, 'ZALO_BOT_TOKEN');
-  if (!token) throw new ConfigError('Thiếu ZALO_BOT_TOKEN (xem .env.example)');
+  if (!token) throw new ConfigError('Missing ZALO_BOT_TOKEN (see .env.example)');
 
   const apiKey = readStr(env, 'NIM_API_KEY');
   const deepseekKey = readStr(env, 'DEEPSEEK_API_KEY');
@@ -251,27 +251,27 @@ export function loadConfig(input = {}) {
   const defaultAlias = String(cli.model ?? readStr(env, 'MODEL_DEFAULT', DEFAULT_ALIAS)).toLowerCase();
   if (!isKnownAlias(defaultAlias)) {
     throw new ConfigError(
-      `MODEL_DEFAULT không hợp lệ (nhận: "${defaultAlias}"). Chọn: ${Object.keys(MODEL_ALIASES).join(', ')}`,
+      `MODEL_DEFAULT is invalid (got: "${defaultAlias}"). Choose: ${Object.keys(MODEL_ALIASES).join(', ')}`,
     );
   }
   let fallbackAlias = String(readStr(env, 'MODEL_FALLBACK', FALLBACK_ALIAS)).toLowerCase();
   if (!isKnownAlias(fallbackAlias)) {
     throw new ConfigError(
-      `MODEL_FALLBACK không hợp lệ (nhận: "${fallbackAlias}"). Chọn: ${Object.keys(MODEL_ALIASES).join(', ')}`,
+      `MODEL_FALLBACK is invalid (got: "${fallbackAlias}"). Choose: ${Object.keys(MODEL_ALIASES).join(', ')}`,
     );
   }
   if (fallbackAlias === defaultAlias) fallbackAlias = defaultAlias === 'nim-light' ? 'deepseek' : 'nim-light';
 
-  // Chỉ bắt buộc key của provider đang được dùng (mặc định hoặc dự phòng).
+  // Only require the key of the provider actually in use (default or fallback).
   const usedProviders = new Set([
     MODEL_ALIASES[defaultAlias].provider,
     MODEL_ALIASES[fallbackAlias].provider,
   ]);
   if (usedProviders.has('nim') && !apiKey) {
-    throw new ConfigError('Thiếu NIM_API_KEY (đang dùng làm model chính hoặc dự phòng)');
+    throw new ConfigError('Missing NIM_API_KEY (used as the primary or fallback model)');
   }
   if (usedProviders.has('deepseek') && !deepseekKey) {
-    throw new ConfigError('Thiếu DEEPSEEK_API_KEY (xem .env.example)');
+    throw new ConfigError('Missing DEEPSEEK_API_KEY (see .env.example)');
   }
 
   const searchEnabled = cli['no-search']
@@ -279,11 +279,11 @@ export function loadConfig(input = {}) {
     : readBool(env, 'SEARCH_ENABLED', true);
   const tavilyKey = readStr(env, 'TAVILY_API_KEY');
   if (searchEnabled && !tavilyKey) {
-    throw new ConfigError('SEARCH_ENABLED=on nhưng thiếu TAVILY_API_KEY (hoặc dùng --no-search)');
+    throw new ConfigError('SEARCH_ENABLED=on but TAVILY_API_KEY is missing (or use --no-search)');
   }
 
   let webhookSecret = '';
-  // Tương đối → resolve theo gốc repo, để cwd của panel/pm2 không đổi chỗ lưu context.
+  // Relative → resolve against the repo root so the panel/pm2 cwd cannot change where context is stored.
   const dataDirRaw = readStr(env, 'DATA_DIR', './data').trim() || './data';
   const dataDir = path.isAbsolute(dataDirRaw)
     ? path.normalize(dataDirRaw)
@@ -292,7 +292,7 @@ export function loadConfig(input = {}) {
 
   const depthRaw = readStr(env, 'SEARCH_DEPTH', 'fast');
   if (!['fast', 'basic', 'advanced', 'ultra-fast'].includes(depthRaw)) {
-    throw new ConfigError(`SEARCH_DEPTH phải là fast|basic|advanced|ultra-fast (nhận: "${depthRaw}")`);
+    throw new ConfigError(`SEARCH_DEPTH must be fast|basic|advanced|ultra-fast (got: "${depthRaw}")`);
   }
 
   const config = {
@@ -345,21 +345,21 @@ export function loadConfig(input = {}) {
     responseTimeoutMs: /** @type {number} */ (readInt(env, 'RESPONSE_TIMEOUT_MS', 30000, { min: 2000 })),
     context: {
       dir: path.join(dataDir, 'contexts'),
-      // 0 = không giới hạn
+      // 0 = unlimited
       maxTokens: /** @type {number} */ (readInt(env, 'CONTEXT_MAX_TOKENS', 0, { min: 0 })),
       maxMessages: /** @type {number} */ (readInt(env, 'CONTEXT_MAX_MESSAGES', 0, { min: 0 })),
       maxCharsPerMessage: /** @type {number} */ (readInt(env, 'CONTEXT_MAX_CHARS_PER_MESSAGE', 12000, { min: 0 })),
       ttlHours: /** @type {number} */ (readInt(env, 'CONTEXT_TTL_HOURS', 72, { min: 0 })),
-      // ttlHours = 0 → không bao giờ tự xoá context
+      // ttlHours = 0 → never auto-delete the context
       summary: readBool(env, 'CONTEXT_SUMMARY', true),
-      // 0 = chưa biết context window → chỉ compaction khi provider báo overflow
+      // 0 = unknown context window → only compact when the provider reports overflow
       modelWindow: /** @type {number} */ (readInt(env, 'CONTEXT_MODEL_WINDOW', 0, { min: 0 })),
       compactThreshold: (() => {
         const raw = readStr(env, 'CONTEXT_COMPACT_THRESHOLD');
         if (!raw) return 0.8;
         const value = Number(raw);
         if (!Number.isFinite(value) || value <= 0 || value > 1) {
-          throw new ConfigError(`CONTEXT_COMPACT_THRESHOLD phải trong khoảng (0, 1] (nhận: "${raw}")`);
+          throw new ConfigError(`CONTEXT_COMPACT_THRESHOLD must be within (0, 1] (got: "${raw}")`);
         }
         return value;
       })(),
@@ -382,30 +382,30 @@ export function loadConfig(input = {}) {
     },
     sticker: {
       enabled: readBool(env, 'STICKER_ENABLED', true),
-      // trả lại đúng sticker khi có người gửi sticker cho bot
+      // echo the same sticker back when someone sends a sticker to the bot
       echo: readBool(env, 'STICKER_ECHO', true),
       file: path.join(dataDir, 'stickers.json'),
-      // id hợp lệ khai báo sẵn: "id1,id2:tên 2"
+      // pre-declared valid IDs: "id1,id2:name 2"
       extraIds: parseStickerIds(readStr(env, 'STICKER_IDS')),
     },
     tone: (() => {
       const raw = readStr(env, 'BOT_TONE', 'roast-hard').toLowerCase();
-      // nhận alias cho gọn: max/extreme/cuc → roast-extreme, hard → roast-hard, cay → roast
+      // accept short aliases: max/extreme/cuc → roast-extreme, hard → roast-hard, cay → roast
       const alias = {
         max: 'roast-extreme',
         extreme: 'roast-extreme',
         cuc: 'roast-extreme',
-        'cực': 'roast-extreme',
+        'c\u1EF1c': 'roast-extreme',
         'sieu-nang': 'roast-extreme',
         hard: 'roast-hard',
         nang: 'roast-hard',
-        'nặng': 'roast-hard',
+        'n\u1EB7ng': 'roast-hard',
         cay: 'roast',
         cakhia: 'roast',
       };
       const tone = alias[raw] ?? raw;
       if (!['friendly', 'roast', 'roast-hard', 'roast-extreme'].includes(tone)) {
-        throw new ConfigError(`BOT_TONE phải là friendly, roast, roast-hard hoặc roast-extreme (nhận: "${raw}")`);
+        throw new ConfigError(`BOT_TONE must be friendly, roast, roast-hard or roast-extreme (got: "${raw}")`);
       }
       return tone;
     })(),
@@ -413,10 +413,10 @@ export function loadConfig(input = {}) {
     typingIntervalMs: /** @type {number} */ (readInt(env, 'TYPING_INTERVAL_MS', 4000, { min: 1000 })),
     progressive: /** @type {ProgressiveMode} */ (progressive),
     progressiveAfterMs: /** @type {number} */ (readInt(env, 'PROGRESSIVE_AFTER_MS', 3000, { min: 500 })),
-    // 0 = không giới hạn số tin cho 1 câu trả lời
+    // 0 = unlimited messages per reply
     maxMessagesPerReply: /** @type {number} */ (readInt(env, 'MAX_MESSAGES_PER_REPLY', 0, { min: 0 })),
     maxQueueDepth: /** @type {number} */ (readInt(env, 'MAX_QUEUE_DEPTH', 50, { min: 1, max: 1000 })),
-    // 0 = tắt; mặc định chặn spam đốt credit API
+    // 0 = off; enabled by default to block spam that burns API credits
     userRateLimitPerMinute: /** @type {number} */ (readInt(env, 'USER_RATE_LIMIT_PER_MINUTE', 12, { min: 0 })),
     logLevel: cli.verbose ? 'debug' : readStr(env, 'LOG_LEVEL', 'info').toLowerCase(),
     logThinking: readBool(env, 'LOG_THINKING', true),
@@ -431,7 +431,7 @@ export function loadConfig(input = {}) {
   return config;
 }
 
-/** Tóm tắt cấu hình an toàn để log lúc khởi động. */
+/** Safe config summary for the startup log. */
 export function describeConfig(config) {
   const primary = MODEL_ALIASES[config.model.defaultAlias];
   const primaryModel = primary ? config[primary.provider]?.[primary.modelKey] : '';

@@ -1,4 +1,4 @@
-# Sao lưu data/ của bot (context, sticker). Dùng bởi Scheduled Task ZaloBotBackup.
+# Back up the bot's data/ (context, stickers). Used by the ZaloBotBackup Scheduled Task.
 #
 #   powershell -ExecutionPolicy Bypass -File deploy\backup-data.ps1 -Root C:\zalo
 [CmdletBinding()]
@@ -12,7 +12,7 @@ $ErrorActionPreference = 'Stop'
 $rootPath = (Resolve-Path $Root).Path
 $dataDir = Join-Path $rootPath 'data'
 if (-not (Test-Path $dataDir)) {
-  Write-Host "khong co $dataDir, bo qua"
+  Write-Host "no $dataDir, skipping"
   exit 0
 }
 if (-not $BackupDir) { $BackupDir = Join-Path $rootPath 'backups' }
@@ -23,9 +23,9 @@ $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
 $zip = Join-Path $backupPath "zalo-data-$stamp.zip"
 Compress-Archive -Path (Join-Path $dataDir '*') -DestinationPath $zip -CompressionLevel Optimal -Force
 
-# Giữ N bản mới nhất
+# Keep the N newest copies
 $old = Get-ChildItem $backupPath -Filter 'zalo-data-*.zip' | Sort-Object LastWriteTime -Descending | Select-Object -Skip $Keep
 foreach ($f in $old) { Remove-Item $f.FullName -Force -ErrorAction SilentlyContinue }
 
 $sizeKb = [math]::Round(((Get-Item $zip).Length / 1KB), 1)
-Write-Host "backup: $zip ($sizeKb KB) | da xoa $($old.Count) ban cu | giu $Keep ban"
+Write-Host "backup: $zip ($sizeKb KB) | removed $($old.Count) old copies | keeping $Keep copies"

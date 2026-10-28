@@ -21,13 +21,13 @@ async function tempDir() {
   return fsp.mkdtemp(path.join(os.tmpdir(), 'zalo-config-'));
 }
 
-test('NIM_MAX_TOKENS=0 tương đương không giới hạn', async () => {
+test('NIM_MAX_TOKENS=0 is the same as unlimited', async () => {
   const dir = await tempDir();
   const config = loadConfig({ argv: [], env: baseEnv({ NIM_MAX_TOKENS: '0' }), cwd: dir });
   assert.equal(config.ai.maxTokens, null);
 });
 
-test('NIM_MAX_TOKENS âm bị chặn', async () => {
+test('a negative NIM_MAX_TOKENS is rejected', async () => {
   const dir = await tempDir();
   assert.throws(
     () => loadConfig({ argv: [], env: baseEnv({ NIM_MAX_TOKENS: '-1' }), cwd: dir }),
@@ -35,7 +35,7 @@ test('NIM_MAX_TOKENS âm bị chặn', async () => {
   );
 });
 
-test('SEARCH_DEPTH sai bị chặn', async () => {
+test('an invalid SEARCH_DEPTH is rejected', async () => {
   const dir = await tempDir();
   assert.throws(
     () => loadConfig({ argv: [], env: baseEnv({ SEARCH_DEPTH: 'turbo' }), cwd: dir }),
@@ -43,7 +43,7 @@ test('SEARCH_DEPTH sai bị chặn', async () => {
   );
 });
 
-test('webhook secret sinh 1 lần và giữ nguyên sau restart', async () => {
+test('the webhook secret is generated once and kept across restarts', async () => {
   const dir = await tempDir();
   const env = baseEnv({ MODE: 'webhook', DATA_DIR: dir });
   const first = loadConfig({ argv: [], env, cwd: dir });
@@ -55,7 +55,7 @@ test('webhook secret sinh 1 lần và giữ nguyên sau restart', async () => {
   assert.ok(fs.existsSync(path.join(dir, 'webhook-secret')));
 });
 
-test('WEBHOOK_SECRET ngắn bị chặn', async () => {
+test('a short WEBHOOK_SECRET is rejected', async () => {
   const dir = await tempDir();
   assert.throws(
     () => loadConfig({ argv: [], env: baseEnv({ MODE: 'webhook', WEBHOOK_SECRET: 'short' }), cwd: dir }),
@@ -63,7 +63,7 @@ test('WEBHOOK_SECRET ngắn bị chặn', async () => {
   );
 });
 
-test('mặc định không giới hạn context / số tin trả lời', async () => {
+test('context / reply count are unlimited by default', async () => {
   const dir = await tempDir();
   const config = loadConfig({ argv: [], env: baseEnv(), cwd: dir });
   assert.equal(config.maxMessagesPerReply, 0);
@@ -74,7 +74,7 @@ test('mặc định không giới hạn context / số tin trả lời', async (
   assert.equal(config.maxQueueDepth, 50);
 });
 
-test('compaction: mặc định và validate ngưỡng', async () => {
+test('compaction: defaults and threshold validation', async () => {
   const dir = await tempDir();
   const config = loadConfig({ argv: [], env: baseEnv(), cwd: dir });
   assert.equal(config.context.modelWindow, 0);
@@ -88,26 +88,26 @@ test('compaction: mặc định và validate ngưỡng', async () => {
   );
 });
 
-test('DATA_DIR tương đối resolve theo gốc repo, không theo cwd', async () => {
+test('a relative DATA_DIR resolves against the repo root, not the cwd', async () => {
   const dir = await tempDir();
   const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
   const config = loadConfig({ argv: [], env: baseEnv({ DATA_DIR: './data' }), cwd: dir });
   assert.equal(config.dataDir, path.join(repoRoot, 'data'));
   assert.equal(config.context.dir, path.join(repoRoot, 'data', 'contexts'));
 
-  // Đường dẫn tuyệt đối vẫn được giữ nguyên.
+  // Absolute paths are kept as they are.
   const absolute = await tempDir();
   const config2 = loadConfig({ argv: [], env: baseEnv({ DATA_DIR: absolute }), cwd: dir });
   assert.equal(config2.dataDir, path.normalize(absolute));
 });
 
-test('CONTEXT_TTL_HOURS=0 được chấp nhận (không bao giờ xoá)', async () => {
+test('CONTEXT_TTL_HOURS=0 is accepted (never deleted)', async () => {
   const dir = await tempDir();
   const config = loadConfig({ argv: [], env: baseEnv({ CONTEXT_TTL_HOURS: '0' }), cwd: dir });
   assert.equal(config.context.ttlHours, 0);
 });
 
-test('mặc định dùng DeepSeek flash 4.1 với reasoning off', async () => {
+test('defaults to DeepSeek flash 4.1 with reasoning off', async () => {
   const dir = await tempDir();
   const config = loadConfig({ argv: [], env: baseEnv(), cwd: dir });
   assert.equal(config.model.defaultAlias, 'deepseek');
@@ -117,7 +117,7 @@ test('mặc định dùng DeepSeek flash 4.1 với reasoning off', async () => {
   assert.equal(config.ai.reasoning, 'none');
 });
 
-test('NIM_ULTRA_MODEL: mặc định nemotron-3-ultra, override được qua env/flag', async () => {
+test('NIM_ULTRA_MODEL: defaults to nemotron-3-ultra, can be overridden via env/flag', async () => {
   const dir = await tempDir();
   assert.equal(
     loadConfig({ argv: [], env: baseEnv(), cwd: dir }).nim.ultraModel,
@@ -131,7 +131,7 @@ test('NIM_ULTRA_MODEL: mặc định nemotron-3-ultra, override được qua env
   assert.equal(viaFlag.model.defaultAlias, 'ultra');
 });
 
-test('AI_REASONING được ưu tiên hơn NIM_REASONING (tương thích cũ)', async () => {  const dir = await tempDir();
+test('AI_REASONING takes precedence over NIM_REASONING (legacy compatibility)', async () => {  const dir = await tempDir();
   const config = loadConfig({
     argv: [],
     env: baseEnv({ AI_REASONING: 'low', NIM_REASONING: 'high' }),
@@ -140,7 +140,7 @@ test('AI_REASONING được ưu tiên hơn NIM_REASONING (tương thích cũ)', 
   assert.equal(config.ai.reasoning, 'low');
 });
 
-test('thiếu DEEPSEEK_API_KEY khi dùng deepseek sẽ báo lỗi', async () => {
+test('a missing DEEPSEEK_API_KEY throws when deepseek is used', async () => {
   const dir = await tempDir();
   assert.throws(
     () => loadConfig({ argv: [], env: baseEnv({ DEEPSEEK_API_KEY: '' }), cwd: dir }),
@@ -148,7 +148,7 @@ test('thiếu DEEPSEEK_API_KEY khi dùng deepseek sẽ báo lỗi', async () => 
   );
 });
 
-test('MODEL_DEFAULT lạ bị chặn', async () => {
+test('an unknown MODEL_DEFAULT is rejected', async () => {
   const dir = await tempDir();
   assert.throws(
     () => loadConfig({ argv: [], env: baseEnv({ MODEL_DEFAULT: 'gpt-9' }), cwd: dir }),
@@ -156,7 +156,7 @@ test('MODEL_DEFAULT lạ bị chặn', async () => {
   );
 });
 
-test('sticker mặc định bật, echo bật, có đường dẫn catalog', async () => {
+test('stickers are on by default, echo is on, and a catalog path exists', async () => {
   const dir = await tempDir();
   const config = loadConfig({ argv: [], env: baseEnv(), cwd: dir });
   assert.equal(config.sticker.enabled, true);
@@ -164,24 +164,24 @@ test('sticker mặc định bật, echo bật, có đường dẫn catalog', asy
   assert.ok(config.sticker.file.endsWith('stickers.json'));
 });
 
-test('STICKER_IDS được parse thành extraIds', async () => {
+test('STICKER_IDS is parsed into extraIds', async () => {
   const dir = await tempDir();
   const config = loadConfig({
     argv: [],
-    env: baseEnv({ STICKER_IDS: '0e078a2fb66a5f34067b, aaaaaaaaaaaaaaaaaaaa:Vui vẻ' }),
+    env: baseEnv({ STICKER_IDS: '0e078a2fb66a5f34067b, aaaaaaaaaaaaaaaaaaaa:Cheerful' }),
     cwd: dir,
   });
   assert.equal(config.sticker.extraIds.length, 2);
-  assert.equal(config.sticker.extraIds[1].name, 'Vui vẻ');
+  assert.equal(config.sticker.extraIds[1].name, 'Cheerful');
 });
 
-test('STICKER_ENABLED=off tắt sticker', async () => {
+test('STICKER_ENABLED=off disables stickers', async () => {
   const dir = await tempDir();
   const config = loadConfig({ argv: [], env: baseEnv({ STICKER_ENABLED: 'off' }), cwd: dir });
   assert.equal(config.sticker.enabled, false);
 });
 
-test('MODEL_DEFAULT=nim vẫn chạy được nếu thiếu key DeepSeek', async () => {
+test('MODEL_DEFAULT=nim still works without a DeepSeek key', async () => {
   const dir = await tempDir();
   const config = loadConfig({
     argv: [],

@@ -28,8 +28,8 @@ const FALLBACK_MIN_MS = 2500;
 const MIN_ATTEMPT_MS = 1500;
 
 /**
- * Chia ngân sách một attempt. Non-streaming giữ lại một phần deadline cho fallback;
- * streaming không giữ (câu trả lời dài cần chạy tới deadline), TTFT guard lo phần treo.
+ * Split the budget of one attempt. Non-streaming keeps part of the deadline for fallback;
+ * streaming keeps none (a long answer must run until the deadline), the TTFT guard handles hangs.
  * @param {{remainingMs: number, attempt: number, maxAttempts: number, streaming: boolean, aiTimeoutMs: number}} input
  */
 function planAttemptBudget(input) {
@@ -54,7 +54,7 @@ function planAttemptBudget(input) {
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 /**
- * Rút gọn text cho log console: bỏ xuống dòng, cắt bớt cho dễ đọc.
+ * Shorten text for console logs: drop newlines, trim for readability.
  * @param {unknown} text
  * @param {number} [limit]
  */
@@ -68,7 +68,7 @@ function preview(text, limit = 900) {
 
 /**
  * @param {string} buffer
- * @returns {number} vị trí cắt (đã bao gồm dấu câu/newline ở cuối đoạn)
+ * @returns {number} cut position (includes the trailing punctuation/newline of the segment)
  */
 function findBreak(buffer) {
   const positions = [
@@ -84,7 +84,7 @@ function findBreak(buffer) {
 
   for (const position of positions) {
     const head = buffer.slice(0, position);
-    // Không cắt ngay sau gạch đầu dòng / số thứ tự trơ trọi ("2.", "- ") — xấu khi chia tin.
+    // Do not cut right after a dangling bullet / list number ("2.", "- ") — ugly when splitting messages.
     if (/(?:^|\n)\s*(?:\d+[.)]|[-*+])\s*$/.test(head)) continue;
     return position;
   }
@@ -143,8 +143,8 @@ export function createAgent(deps) {
   const RATE_WINDOW_MS = 60_000;
 
   /**
-   * Giới hạn số tin một người gửi trong 1 phút — chặn spam đốt credit API.
-   * Bỏ qua im lặng (không trả lời) để không tiếp tay cho spam.
+   * Limit how many messages one person sends per minute — blocks spam that burns API credit.
+   * Ignore silently (no reply) so we do not encourage spam.
    * @param {string} senderId
    */
   function rateLimited(senderId) {
@@ -167,7 +167,7 @@ export function createAgent(deps) {
 
   /**
    * @param {string} chatId
-   * @param {() => Promise<void>|void} [onFirstSend] gọi 1 lần ngay trước tin đầu tiên (tắt typing)
+   * @param {() => Promise<void>|void} [onFirstSend] called once right before the first message (stops typing)
    * @returns {{enqueue: (text: string) => Promise<void>, wait: () => Promise<void>, sent: () => number}}
    */
   function makeSender(chatId, onFirstSend = async () => {}) {
@@ -183,7 +183,7 @@ export function createAgent(deps) {
           if (sent >= limit) return;
           if (!firstSendHandled) {
             firstSendHandled = true;
-            // tắt "đang soạn tin" TRƯỚC khi gửi tin đầu tiên để Zalo không còn hiện action
+            // stop "typing" BEFORE sending the first message so Zalo stops showing the action
             try {
               await onFirstSend();
             } catch {
@@ -244,7 +244,8 @@ export function createAgent(deps) {
     if (override && ['low', 'medium', 'high'].includes(override)) return override;
     const base = config.ai.reasoning;
     if (base !== 'auto') return base;
-    const wantsDepth = text.length > 200 || /phân tích|giải thích|so sánh|tại sao|vì sao|chi tiết|lên kế hoạch/i.test(text);
+    const wantsDepth =
+      text.length > 200 || /ph\u00e2n t\u00edch|gi\u1ea3i th\u00edch|so s\u00e1nh|t\u1ea1i sao|v\u00ec sao|chi ti\u1ebft|l\u00ean k\u1ebf ho\u1ea1ch/i.test(text);
     return wantsDepth ? 'low' : 'none';
   }
 
@@ -260,10 +261,10 @@ export function createAgent(deps) {
     const sender = makeSender(event.chatId, stopTyping);
 
     const rawText = normalizeWhitespace(event.text ?? '');
-    // Model là text-only: ảnh chỉ được ghi chú, không gửi nội dung ảnh lên API.
-    const imageNote = 'người dùng gửi kèm ảnh — bot không xem được nội dung';
+    // The model is text-only: images are only noted, image content is not sent to the API.
+    const imageNote = 'the user attached an image — the bot cannot see its content';
     const effectiveText =
-      rawText || (event.imageUrl ? 'Người dùng đã gửi một ảnh — bot không xem được nội dung.' : '');
+      rawText || (event.imageUrl ? 'The user sent an image — the bot cannot see its content.' : '');
     if (!effectiveText) return;
 
     const textWithImage =
@@ -283,9 +284,9 @@ export function createAgent(deps) {
     const tone = record?.meta?.tone ?? config.tone;
     const toolDefs = tools.definitions();
     const promptRegistry = createZaloPrompt({
-      botName: zalo.displayName || 'trợ lý AI',
+      botName: zalo.displayName || 'AI assistant',
       chatType: event.chatType,
-      // Tool guidance chỉ hiện khi schema tương ứng thật sự được gửi lên model.
+      // Tool guidance only appears when the matching schema is actually sent to the model.
       tools: toolDefs,
       imageEnabled: config.image.enabled,
       tone,
@@ -295,23 +296,23 @@ export function createAgent(deps) {
 
     const reasoning = effectiveReasoning(record, effectiveText);
     const target = llm.resolve(record);
-    // `/split` đặt riêng cho chat này, ưu tiên hơn PROGRESSIVE trong cấu hình.
+    // `/split` is per chat and takes priority over PROGRESSIVE in the config.
     const splitMode = ['auto', 'on', 'off'].includes(record?.meta?.split)
       ? record.meta.split
       : config.progressive;
     const streaming = splitMode !== 'off';
-    // `on` = gửi tách đoạn sớm (khi có câu hoàn chỉnh); `auto` = chỉ khi chờ lâu.
+    // `on` = send split segments early (once a sentence is complete); `auto` = only when the wait is long.
     const flushAfterMs = splitMode === 'on' ? 0 : config.progressiveAfterMs;
     const minHeadChars = splitMode === 'on' ? 80 : 160;
-    // Giới hạn đúng 1 tin thì không tách sớm: gửi phần đầu sẽ chiếm hết slot và
-    // phần còn lại bị bỏ mà không có dấu hiệu gì.
+    // With a limit of exactly 1 message, do not split early: sending the head uses the only slot
+    // and the rest is dropped without any sign.
     const flushAllowed = config.maxMessagesPerReply !== 1;
 
-    // Lưu lượt của user NGAY (trước khi gọi model) để không mất câu hỏi nếu crash/timeout.
+    // Save the user turn RIGHT AWAY (before calling the model) so the question survives a crash/timeout.
     record.messages.push(userTurn);
     record.turns = (record.turns ?? 0) + 1;
 
-    // /search: kết quả là context bền vững, chèn ngay trước lượt user hiện tại.
+    // /search: the result is durable context, inserted right before the current user turn.
     if (options.forceSearch) {
       const search = await tools.run(
         'web_search',
@@ -325,8 +326,8 @@ export function createAgent(deps) {
       );
     }
 
-    // Context runtime (thời gian...) do prompt registry cung cấp, materialize
-    // thành message user bền vững — refresh mỗi lượt, không mutate lượt user.
+    // Runtime context (time...) comes from the prompt registry and is materialized
+    // as durable user messages — refreshed every turn, never mutating the user turn.
     syncContexts(record, promptAssembly.contexts);
     store.touch(event.chatId);
 
@@ -367,8 +368,8 @@ export function createAgent(deps) {
 
     const messages = built.messages;
 
-    // Bằng chứng context có được gửi lên API: bật LOG_LEVEL=debug sẽ thấy số message
-    // (đã gồm lịch sử) và số ký tự của cả payload ở mỗi lượt.
+    // Proof that context reaches the API: with LOG_LEVEL=debug you see the message count
+    // (history included) and the character count of the whole payload on every turn.
     logger.debug('llm payload', {
       chatId: event.chatId,
       messages: messages.length,
@@ -387,8 +388,8 @@ export function createAgent(deps) {
     let streamBuffer = '';
     let emitted = 0;
     let flushed = false;
-    // Sau một vòng có tool call, nội dung vòng sau là câu trả lời mới hoàn chỉnh —
-    // không tách sớm nữa để tránh gửi thiếu/trùng đoạn.
+    // After a round with a tool call, the next round is a fresh, complete answer —
+    // do not split early anymore to avoid missing or duplicated segments.
     let flushLocked = false;
 
     const onDelta = (delta) => {
@@ -411,11 +412,11 @@ export function createAgent(deps) {
 
     let finalText = '';
     let aborted = false;
-    // Gom phần "thinking" (reasoning_content) của model để in ra console.
+    // Collect the model's "thinking" (reasoning_content) to print to the console.
     let thinkingText = '';
     let reasoningTokens = 0;
-    // Thống kê LLM của lượt này để log: tổng thời gian gọi, thời gian sinh thật (đã trừ TTFT),
-    // số token sinh ra → tok/s. Cộng dồn qua các vòng tool call.
+    // LLM stats for this turn for logging: total call time, real generation time (TTFT subtracted),
+    // generated tokens → tok/s. Accumulated across tool-call rounds.
     let llmMs = 0;
     let completionMs = 0;
     let completionTokens = 0;
@@ -444,7 +445,7 @@ export function createAgent(deps) {
           streaming,
           aiTimeoutMs: config.ai.timeoutMs,
         });
-        // Đo cả lần gọi thất bại: llmMs là tổng thời gian thực sự tiêu vào LLM.
+        // Measure failed calls too: llmMs is the total time actually spent on the LLM.
         const callStarted = Date.now();
         try {
           return await llm.chat({
@@ -483,7 +484,7 @@ export function createAgent(deps) {
       } catch (error) {
         lastError = error;
 
-        // Provider xác nhận tràn context: nén rồi thử lại đúng lượt này.
+        // The provider confirmed a context overflow: compact and retry this same turn.
         if (/** @type {any} */ (error)?.code === LLM_ERROR.CONTEXT_WINDOW_EXCEEDED && !overflowRecovered) {
           overflowRecovered = true;
           try {
@@ -500,7 +501,7 @@ export function createAgent(deps) {
               built = buildAll();
               messages.splice(0, messages.length, ...built.messages);
               metrics.inc('llm.contextOverflow');
-              logger.warn('context overflow: đã nén và thử lại', {
+              logger.warn('context overflow: compacted and retried', {
                 chatId: event.chatId,
                 tokensBefore: result.tokensBefore,
                 tokensAfter: result.tokensAfter,
@@ -516,8 +517,8 @@ export function createAgent(deps) {
         }
       }
 
-      // Fallback cuối: bỏ tool để vẫn có câu trả lời thay vì báo lỗi.
-      // `flushed` = đã gửi phần đầu cho user; gọi fallback lúc này sẽ gửi trùng nội dung.
+      // Last-resort fallback: drop tools so we still get an answer instead of an error.
+      // `flushed` = the head was already sent to the user; calling fallback now would duplicate content.
       if (!response && !flushed) {
         let left = deadline - Date.now();
         if (left > 6000) {
@@ -538,7 +539,7 @@ export function createAgent(deps) {
             });
             llmMs += Date.now() - fallbackStarted;
             metrics.inc('llm.fallback');
-            logger.warn('llm fallback (không tool) thành công', {
+            logger.warn('llm fallback (no tools) succeeded', {
               chatId: event.chatId,
               fallback: llm.fallbackAlias,
               icon: '🛟',
@@ -548,7 +549,7 @@ export function createAgent(deps) {
             lastError = error;
           }
         } else {
-          logger.debug('fallback bỏ qua: không đủ thời gian', {
+          logger.debug('fallback skipped: not enough time', {
             chatId: event.chatId,
             leftMs: left,
             icon: '⏭️',
@@ -557,18 +558,18 @@ export function createAgent(deps) {
       }
 
       if (!response) {
-        // Đã gửi được một phần (progressive) thì coi như xong phần đó.
+        // Part of the reply was already sent (progressive), so treat that part as done.
         if (flushed) {
           aborted = true;
           break;
         }
-        throw lastError ?? new Error('Model không phản hồi');
+        throw lastError ?? new Error('The model did not respond');
       }
 
       completionMs += Number(response.completionMs ?? response.latencyMs ?? 0) || 0;
       completionTokens += Number(response.completionTokens ?? response.usage?.completion_tokens ?? 0) || 0;
-      // Vòng đầu khớp với `built.estimatedTokens`; các vòng sau có thêm message tool
-      // nên không dùng để hiệu chỉnh (sẽ làm lệch tỉ lệ).
+      // The first round matches `built.estimatedTokens`; later rounds add tool messages
+      // so do not use them for calibration (it would skew the ratio).
       if (round === 0) {
         const promptTokens = Number(response.usage?.prompt_tokens ?? 0);
         if (promptTokens > 0) meter.observe(built.estimatedTokens, promptTokens);
@@ -606,8 +607,8 @@ export function createAgent(deps) {
           record.messages.push(toolResultEntry({ toolCallId: call.id, text, ts: Date.now() }));
         }
         store.touch(event.chatId);
-        // Đã lỡ gửi phần đầu của vòng này: gửi trọn nội dung vòng cuối thay vì
-        // cắt theo `emitted` của vòng trước (có thể dài hơn câu trả lời cuối).
+        // The head of this round was already sent: send the whole final-round content instead of
+        // cutting by the previous round's `emitted` (which may be longer than the final answer).
         streamBuffer = '';
         emitted = 0;
         flushLocked = true;
@@ -625,7 +626,7 @@ export function createAgent(deps) {
     if (remainder.trim()) {
       await sendText(sender, remainder);
     } else if (!flushed && !finalText.trim()) {
-      await sendText(sender, 'Mình chưa có câu trả lời cho câu này, bạn thử hỏi lại rõ hơn nhé.');
+      await sendText(sender, 'I do not have an answer for this one yet — please ask again a bit more clearly.');
     }
 
     record.messages.push(
@@ -664,7 +665,7 @@ export function createAgent(deps) {
       ...(aborted ? { aborted: true } : {}),
       messages: sender.sent(),
       kept: built.keptMessages,
-      reasoning, // chế độ suy luận (none/low/...), không phải nội dung thinking
+      reasoning, // reasoning mode (none/low/...), not the thinking content
       ...(reasoningTokens > 0 ? { thinkingTokens: reasoningTokens } : {}),
     });
 
@@ -693,7 +694,7 @@ export function createAgent(deps) {
     metrics.inc('messages.in');
     const incomingPreview =
       event.text && String(event.text).trim() ? preview(event.text, 900) : `[${event.kind}]`;
-    logger.info(`💬 ${event.senderName || 'Người dùng'}: ${incomingPreview}`, {
+    logger.info(`💬 ${event.senderName || 'User'}: ${incomingPreview}`, {
       chatId: event.chatId,
       kind: event.kind,
       len: (event.text ?? '').length,
@@ -703,8 +704,8 @@ export function createAgent(deps) {
     try {
       const record = await store.get(event.chatId, { chatType: event.chatType });
 
-      // Dedupe bền: `seen` trong RAM mất khi restart, record thì không.
-      // (Hai process cùng chạy chia sẻ file vẫn có thể đua — chạy 1 instance.)
+      // Durable dedupe: `seen` in RAM is lost on restart, the record is not.
+      // (Two processes sharing a file can still race — run a single instance.)
       if (event.messageId) {
         const history = Array.isArray(record.seen) ? record.seen : [];
         if (history.includes(event.messageId)) {
@@ -729,7 +730,7 @@ export function createAgent(deps) {
 
       if (event.kind === 'voice') {
         const sender = makeSender(event.chatId, stopTyping);
-        await sendText(sender, 'Mình chưa nghe được tin nhắn thoại, bạn nhắn chữ giúp mình nhé.');
+        await sendText(sender, 'I cannot listen to voice messages yet — please send text instead.');
         return;
       }
       if (event.kind === 'sticker') {
@@ -748,7 +749,7 @@ export function createAgent(deps) {
           return;
         }
         const sender = makeSender(event.chatId, stopTyping);
-        await sendText(sender, 'Mình chưa xem được sticker, bạn nhắn chữ giúp mình nhé.');
+        await sendText(sender, 'I cannot view stickers yet — please send text instead.');
         return;
       }
 
@@ -771,7 +772,7 @@ export function createAgent(deps) {
           return;
         }
         if (result.kind === 'image') {
-          // ảnh không đi qua makeSender → tự tắt typing trước khi gửi
+          // images do not go through makeSender → stop typing before sending
           await stopTyping();
           const imageResult = await tools.run(
             'send_image',
@@ -792,7 +793,7 @@ export function createAgent(deps) {
           } catch (error) {
             logger.warn('sticker command failed', { error: String(/** @type {any} */ (error)?.message ?? error) });
             const sender = makeSender(event.chatId, stopTyping);
-            await sendText(sender, 'Gửi sticker không được, bạn thử lại nhé.');
+            await sendText(sender, 'Could not send the sticker, please try again.');
           }
           return;
         }
@@ -816,11 +817,11 @@ export function createAgent(deps) {
         body: typeof partial?.body === 'string' ? partial.body.slice(0, 300) : undefined,
       });
 
-      let text = 'Xin lỗi, mình gặp lỗi khi xử lý tin này. Bạn thử lại giúp mình nhé.';
+      let text = 'Sorry, something went wrong while handling this message. Please try again.';
       if (error instanceof CircuitOpenError) {
-        text = 'Mình đang quá tải một chút, bạn thử lại sau ít giây nhé.';
+        text = 'I am a bit overloaded right now, please try again in a few seconds.';
       } else if (error instanceof HttpError && error.status === 401) {
-        text = 'Bot đang gặp lỗi xác thực với nhà cung cấp AI. Admin kiểm tra lại key giúp mình nhé.';
+        text = 'The bot hit an authentication error with the AI provider. Admin, please check the key.';
       }
 
       try {
@@ -839,7 +840,7 @@ export function createAgent(deps) {
   }
 
   /**
-   * Xếp hàng theo chat (giữ thứ tự) + giới hạn đồng thời toàn cục.
+   * Queue per chat (preserving order) + a global concurrency limit.
    * @param {import('../zalo/events.js').BotEvent} event
    */
   function enqueue(event) {
@@ -847,17 +848,17 @@ export function createAgent(deps) {
 
     if (queueDepth >= config.maxQueueDepth) {
       metrics.inc('queue.dropped');
-      logger.warn('queue đầy, bỏ qua tin', {
+      logger.warn('queue is full, skipping message', {
         chatId,
         queueDepth,
         max: config.maxQueueDepth,
         icon: '🧯',
       });
-      // báo nhẹ cho người dùng, không xếp vào queue
+      // notify the user briefly without putting it in the queue
       const chatAllowed = !config.allowedChatIds.length || config.allowedChatIds.includes(chatId);
       if (chatAllowed) {
         zalo
-          .sendMessage(chatId, 'Mình đang xử lý nhiều tin quá, bạn thử lại sau ít giây nhé.')
+          .sendMessage(chatId, 'I am handling too many messages right now, please try again in a few seconds.')
           .catch((error) => logger.debug('busy notice failed', { error: String(error?.message ?? error) }));
       }
       return Promise.resolve();
@@ -899,9 +900,9 @@ export function createAgent(deps) {
   }
 
   /**
-   * Chờ các tin đang xử lý chạy xong (dùng khi shutdown).
+   * Wait for in-flight messages to finish (used on shutdown).
    * @param {number} [timeoutMs]
-   * @returns {Promise<number>} số tin còn lại khi hết giờ (0 = đã sạch)
+   * @returns {Promise<number>} messages left when time runs out (0 = clean)
    */
   async function drain(timeoutMs = 10_000) {
     if (queueDepth === 0) return 0;

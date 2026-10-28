@@ -25,11 +25,11 @@ import { freshRecord, normalizeRecord } from './record.js';
  * @property {number} turns
  * @property {number} updatedAt
  * @property {{thinking?: string|null, tone?: string|null, model?: string|null, split?: string|null}} meta
- * @property {string[]} [seen] message_id gần đây — chống xử lý trùng sau restart
+ * @property {string[]} [seen] recent message_ids — prevents duplicate processing after restart
  */
 
 /**
- * Lưu ngữ cảnh theo chat dưới dạng JSON, ghi atomic + debounce.
+ * Persist context per chat as JSON, written atomically + debounced.
  * @param {{dir: string, logger?: import('../logger.js').Logger, ttlHours?: number, maxChats?: number, debounceMs?: number, now?: () => number}} options
  */
 export function createContextStore(options) {
@@ -73,7 +73,7 @@ export function createContextStore(options) {
   /** @param {ChatRecord} record */
   async function persist(record) {
     const file = fileFor(record.chatId);
-    // Tên tmp duy nhất: debounce và flush() có thể ghi cùng chat đồng thời.
+    // Unique tmp name: debounce and flush() can write the same chat concurrently.
     writeSeq += 1;
     const tmp = `${file}.${process.pid}.${writeSeq}.tmp`;
     const payload = JSON.stringify(record);
@@ -153,10 +153,10 @@ export function createContextStore(options) {
   }
 
   /**
-   * Xoá ngữ cảnh của một chat.
+   * Delete the context of a chat.
    * @param {string} chatId
-   * @param {{keepMeta?: boolean}} [options] `keepMeta: true` → chỉ xoá messages/summary/turns,
-   *   giữ `meta` (tone/model/thinking). Mặc định xoá sạch file như cũ.
+   * @param {{keepMeta?: boolean}} [options] `keepMeta: true` → only clear messages/summary/turns,
+   *   keep `meta` (tone/model/thinking). By default the whole file is removed as before.
    */
   async function reset(chatId, options = {}) {
     const timer = timers.get(chatId);
@@ -204,7 +204,7 @@ export function createContextStore(options) {
         await persist(record);
         dirty.delete(chatId);
       } catch (error) {
-        // giữ dirty và thử lại sau, tránh mất dữ liệu
+        // keep it dirty and retry later so no data is lost
         logger?.warn('flush context failed', { chatId, error });
         scheduleSave(chatId);
       }
@@ -212,7 +212,7 @@ export function createContextStore(options) {
   }
 
   async function prune() {
-    // ttlHours = 0 → không bao giờ tự xoá context
+    // ttlHours = 0 → never delete context automatically
     if (ttlMs <= 0) return 0;
     let entries;
     try {
@@ -243,10 +243,10 @@ export function createContextStore(options) {
         }
       }
     }
-    // File đã xoá mà bản trong RAM vẫn còn thì TTL vô hiệu với chat đang mở:
-    // bỏ luôn record cũ (chat sẽ nạp lại từ đĩa như mới ở lần sau).
+    // If the file was deleted but the in-memory copy is still there, TTL is
+    // ineffective for open chats: drop the old record too (the chat reloads from disk fresh next time).
     for (const [chatId, record] of [...memory]) {
-      // updatedAt lạ/thiếu (file cũ hỏng) thì giữ lại, không suy đoán là quá hạn.
+      // Keep records with a weird/missing updatedAt (corrupt old file); do not assume they expired.
       if (dirty.has(chatId) || !Number.isFinite(record.updatedAt) || record.updatedAt >= cutoff) continue;
       const timer = timers.get(chatId);
       if (timer) {
@@ -267,7 +267,7 @@ export function createContextStore(options) {
     return memory.size;
   }
 
-  /** Số file context đang có trên đĩa (chỉ file .json). */
+  /** Number of context files currently on disk (only .json files). */
   async function count() {
     let entries;
     try {

@@ -14,7 +14,7 @@ function fakeResponse(spec = {}) {
   };
 }
 
-/** Hostname trong test luôn trỏ về IP công khai (tránh DNS thật). */
+/** Hostnames in tests always resolve to a public IP (avoids real DNS). */
 const publicLookup = async () => ['203.0.113.10'];
 
 /** @param {typeof fetch} fetchImpl @param {Record<string, any>} [extra] */
@@ -22,20 +22,20 @@ function makeValidator(fetchImpl, extra = {}) {
   return createImageValidator({ fetchImpl, lookup: publicLookup, ...extra });
 }
 
-test('chấp nhận ảnh có content-type image/*', async () => {
+test('accepts images with an image/* content-type', async () => {
   const validator = makeValidator(async () => fakeResponse({ headers: { 'content-type': 'image/png' } }));
   const result = await validator.validate('https://example.com/a.png');
   assert.equal(result.ok, true);
 });
 
-test('từ chối content-type không phải ảnh', async () => {
+test('rejects a content-type that is not an image', async () => {
   const validator = makeValidator(async () => fakeResponse({ headers: { 'content-type': 'text/html' } }));
   const result = await validator.validate('https://example.com/page');
   assert.equal(result.ok, false);
   assert.match(String(result.reason), /content-type/);
 });
 
-test('HEAD 403 thì fallback GET', async () => {
+test('falls back to GET when HEAD returns 403', async () => {
   const calls = [];
   const validator = makeValidator(async (_url, opts) => {
     calls.push(opts.method);
@@ -47,7 +47,7 @@ test('HEAD 403 thì fallback GET', async () => {
   assert.deepEqual(calls, ['HEAD', 'GET']);
 });
 
-test('lỗi mạng ở HEAD thì thử GET', async () => {
+test('tries GET when HEAD fails on the network', async () => {
   let first = true;
   const validator = makeValidator(async () => {
     if (first) {
@@ -60,7 +60,7 @@ test('lỗi mạng ở HEAD thì thử GET', async () => {
   assert.equal(result.ok, true);
 });
 
-test('cache kết quả theo URL', async () => {
+test('caches results by URL', async () => {
   let calls = 0;
   const validator = makeValidator(async () => {
     calls += 1;
@@ -71,16 +71,16 @@ test('cache kết quả theo URL', async () => {
   assert.equal(calls, 1);
 });
 
-test('chặn ảnh quá lớn ngay cả khi HEAD trả content-length', async () => {
+test('rejects images that are too large even when HEAD returns content-length', async () => {
   const validator = makeValidator(async () =>
     fakeResponse({ headers: { 'content-type': 'image/png', 'content-length': String(100 * 1024 * 1024) } }),
   );
   const result = await validator.validate('https://example.com/huge.png');
   assert.equal(result.ok, false);
-  assert.match(String(result.reason), /quá lớn/);
+  assert.match(String(result.reason), /too large/);
 });
 
-test('GET range dùng content-range để biết tổng dung lượng', async () => {
+test('ranged GET uses content-range to learn the total size', async () => {
   const validator = makeValidator(async (_url, opts) => {
     if (opts.method === 'HEAD') return fakeResponse({ status: 403 });
     return fakeResponse({
@@ -94,16 +94,16 @@ test('GET range dùng content-range để biết tổng dung lượng', async ()
   });
   const result = await validator.validate('https://example.com/big-range.png');
   assert.equal(result.ok, false);
-  assert.match(String(result.reason), /quá lớn/);
+  assert.match(String(result.reason), /too large/);
 });
 
-test('từ chối URL không hợp lệ', async () => {
+test('rejects an invalid URL', async () => {
   const validator = makeValidator(async () => fakeResponse());
   const result = await validator.validate('ftp://example.com/a.png');
   assert.equal(result.ok, false);
 });
 
-test('isPrivateAddress nhận diện dải nội bộ', () => {
+test('isPrivateAddress recognizes internal ranges', () => {
   for (const address of ['127.0.0.1', '10.1.2.3', '172.16.0.1', '192.168.1.1', '169.254.169.254', '100.64.0.1', '::1', 'fd00::1', 'fe80::1', '::ffff:127.0.0.1']) {
     assert.equal(isPrivateAddress(address), true, address);
   }
@@ -112,7 +112,7 @@ test('isPrivateAddress nhận diện dải nội bộ', () => {
   }
 });
 
-test('chặn URL trỏ thẳng vào IP nội bộ (không gọi mạng)', async () => {
+test('blocks URLs pointing straight at an internal IP (no network call)', async () => {
   let calls = 0;
   const validator = makeValidator(async () => {
     calls += 1;
@@ -121,22 +121,22 @@ test('chặn URL trỏ thẳng vào IP nội bộ (không gọi mạng)', async 
   for (const url of ['http://127.0.0.1:8787/metrics', 'http://192.168.1.5/a.png', 'http://169.254.169.254/latest/meta-data', 'http://[::1]/a.png']) {
     const result = await validator.validate(url);
     assert.equal(result.ok, false, url);
-    assert.match(String(result.reason), /nội bộ/, url);
+    assert.match(String(result.reason), /internal/, url);
   }
   assert.equal(calls, 0);
 });
 
-test('chặn hostname phân giải về IP nội bộ', async () => {
+test('blocks hostnames that resolve to an internal IP', async () => {
   const validator = createImageValidator({
     fetchImpl: async () => fakeResponse({ headers: { 'content-type': 'image/png' } }),
     lookup: async () => ['10.0.0.5'],
   });
   const result = await validator.validate('https://internal.example/a.png');
   assert.equal(result.ok, false);
-  assert.match(String(result.reason), /nội bộ/);
+  assert.match(String(result.reason), /internal/);
 });
 
-test('theo redirect thủ công và chặn redirect vào IP nội bộ', async () => {
+test('follows redirects manually and blocks redirects to an internal IP', async () => {
   const targets = [];
   const validator = makeValidator(async (url) => {
     targets.push(String(url));
@@ -144,14 +144,14 @@ test('theo redirect thủ công và chặn redirect vào IP nội bộ', async (
   });
   const result = await validator.validate('https://example.com/redirect.png');
   assert.equal(result.ok, false);
-  assert.match(String(result.reason), /nội bộ/);
+  assert.match(String(result.reason), /internal/);
   assert.ok(
     targets.every((url) => !url.includes('169.254.169.254')),
-    'không được gọi tới đích nội bộ',
+    'must not call the internal destination',
   );
 });
 
-test('theo redirect công khai tới ảnh hợp lệ', async () => {
+test('follows a public redirect to a valid image', async () => {
   const targets = [];
   const validator = makeValidator(async (url) => {
     targets.push(String(url));
@@ -165,7 +165,7 @@ test('theo redirect công khai tới ảnh hợp lệ', async () => {
   assert.equal(targets.length, 2);
 });
 
-test('chặn vòng redirect quá nhiều hop', async () => {
+test('blocks a redirect loop with too many hops', async () => {
   const validator = makeValidator(async () =>
     fakeResponse({ status: 302, headers: { location: 'https://example.com/loop.png' } }),
   );

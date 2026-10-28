@@ -1,9 +1,9 @@
 import { createModelCatalog } from './llm/catalog.js';
 
 /**
- * Router chọn provider/model theo chat.
- * - Mặc định: config.model.defaultAlias
- * - Chat có `meta.model` (do /model đặt) thì dùng alias đó
+ * Router that picks the provider/model per chat.
+ * - Default: config.model.defaultAlias
+ * - If the chat has `meta.model` (set by /model), use that alias
  * - Fallback: config.model.fallbackAlias
  *
  * @param {{config: any, service: ReturnType<typeof import('./llm/service.js').createLlmService>, logger?: import('../logger.js').Logger}} options
@@ -62,7 +62,7 @@ export function createModelRouter(options) {
    */
   async function warmup(alias, warmupOptions = {}) {
     const entry = find(alias);
-    if (!entry) return { ok: false, ms: 0, model: '', error: `Không có model "${alias}"` };
+    if (!entry) return { ok: false, ms: 0, model: '', error: `No model "${alias}"` };
     return service.warmup(entry.provider, { ...warmupOptions, model: entry.model });
   }
 

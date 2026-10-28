@@ -57,7 +57,7 @@ async function setup(options = {}) {
 
   /** @type {any[]} */
   const nimCalls = [];
-  const replies = options.replies ?? [{ content: 'Xin chào 👋', toolCalls: [] }];
+  const replies = options.replies ?? [{ content: 'Hello 👋', toolCalls: [] }];
   let index = 0;
   let overflowed = false;
   const target = {
@@ -103,10 +103,10 @@ async function setup(options = {}) {
   };
 
   const stickers = {
-    find: (query) => (String(query).includes('chào') ? { id: 'd8fa8021bc64553a0c75', name: 'Anh Tre Say Hi' } : null),
+    find: (query) => (String(query).includes('greeting') ? { id: 'd8fa8021bc64553a0c75', name: 'Anh Tre Say Hi' } : null),
     random: () => ({ id: 'd8fa8021bc64553a0c75', name: 'Anh Tre Say Hi' }),
-    list: () => [{ id: 'd8fa8021bc64553a0c75', name: 'Anh Tre Say Hi', tags: ['chào'] }],
-    curated: () => [{ id: 'd8fa8021bc64553a0c75', name: 'Anh Tre Say Hi', tags: ['chào'] }],
+    list: () => [{ id: 'd8fa8021bc64553a0c75', name: 'Anh Tre Say Hi', tags: ['greeting'] }],
+    curated: () => [{ id: 'd8fa8021bc64553a0c75', name: 'Anh Tre Say Hi', tags: ['greeting'] }],
     size: () => 1,
   };
 
@@ -123,7 +123,7 @@ async function setup(options = {}) {
     config,
     logger,
     metrics,
-    summarize: async () => 'tóm tắt thử',
+    summarize: async () => 'test summary',
   });
   const commands = createCommands({
     config,
@@ -144,49 +144,49 @@ async function setup(options = {}) {
   return { agent, sent, sentStickers, events, nimCalls, store, config, metrics, dir };
 }
 
-test('trả lời trong group, strip mention, lưu context', async () => {
+test('replies in a group, strips the mention, stores context', async () => {
   const { agent, sent, store } = await setup();
-  await agent.handle(textEvent('@Bot deepseek chào bạn'));
+  await agent.handle(textEvent('@Bot deepseek hello there'));
 
   assert.equal(sent.length, 1);
   assert.equal(sent[0].chatId, 'chat-1');
-  assert.match(sent[0].text, /Xin chào/);
+  assert.match(sent[0].text, /Hello/);
 
   const record = await store.get('chat-1');
   assert.equal(record.turns, 1);
   assert.equal(record.messages.length, 2);
-  assert.equal(record.messages[0].text, 'Nam: chào bạn');
+  assert.equal(record.messages[0].text, 'Nam: hello there');
   assert.equal(record.messages[1].role, 'assistant');
 });
 
-test('dedupe theo message_id', async () => {
+test('dedupes by message_id', async () => {
   const { agent, sent } = await setup();
-  const event = textEvent('chào', { messageId: 'same-id' });
+  const event = textEvent('hi', { messageId: 'same-id' });
   await agent.handle(event);
   await agent.handle(event);
   assert.equal(sent.length, 1);
 });
 
-test('bỏ qua tin nhắn của bot', async () => {
+test('skips messages sent by the bot', async () => {
   const { agent, sent } = await setup();
-  await agent.handle(textEvent('chào', { isBot: true }));
+  await agent.handle(textEvent('hi', { isBot: true }));
   assert.equal(sent.length, 0);
 });
 
-test('chat ngoài allowlist bị bỏ qua', async () => {
+test('chats outside the allowlist are skipped', async () => {
   const { agent, sent } = await setup({ configOverrides: { allowedChatIds: ['other-chat'] } });
-  await agent.handle(textEvent('chào'));
+  await agent.handle(textEvent('hi'));
   assert.equal(sent.length, 0);
 });
 
-test('chia câu trả lời dài thành nhiều tin, tối đa maxMessagesPerReply', async () => {
+test('splits a long reply into several messages, at most maxMessagesPerReply', async () => {
   const { agent, sent } = await setup({ replies: [{ content: 'A'.repeat(5000) }] });
-  await agent.handle(textEvent('viết dài vào'));
+  await agent.handle(textEvent('write something long'));
   assert.equal(sent.length, 3);
-  for (const message of sent) assert.ok(message.text.length <= 1910, `dài ${message.text.length}`);
+  for (const message of sent) assert.ok(message.text.length <= 1910, `long ${message.text.length}`);
 });
 
-test('/help xử lý trước model', async () => {
+test('/help is handled before the model', async () => {
   const { agent, sent, nimCalls } = await setup();
   await agent.handle(textEvent('/help'));
   assert.equal(nimCalls.length, 0);
@@ -194,7 +194,7 @@ test('/help xử lý trước model', async () => {
   assert.match(sent[0].text, /\/status/);
 });
 
-test('ảnh người dùng gửi chỉ được ghi chú, không gửi image_url', async () => {
+test('images sent by users are only noted, image_url is not sent', async () => {
   const { agent, nimCalls } = await setup();
   await agent.handle(
     textEvent('', {
@@ -205,64 +205,64 @@ test('ảnh người dùng gửi chỉ được ghi chú, không gửi image_url
   );
   const messages = nimCalls[0].messages;
   assert.equal(messages.some((message) => Array.isArray(message.content)), false);
-  assert.match(String(messages.at(-1).content), /Người dùng đã gửi một ảnh/);
+  assert.match(String(messages.at(-1).content), /The user sent an image/);
 });
 
-test('ảnh gửi kèm chữ được ghi chú, nội dung ảnh không lên model', async () => {
+test('an image sent with text is noted and image content never reaches the model', async () => {
   const { agent, nimCalls } = await setup();
-  await agent.handle(textEvent('xem ảnh này', { imageUrl: 'https://example.com/cat.png' }));
+  await agent.handle(textEvent('look at this image', { imageUrl: 'https://example.com/cat.png' }));
   const messages = nimCalls[0].messages;
   assert.equal(messages.some((message) => Array.isArray(message.content)), false);
   const last = String(messages.at(-1).content);
-  assert.match(last, /xem ảnh này/);
-  assert.match(last, /gửi kèm ảnh/);
+  assert.match(last, /look at this image/);
+  assert.match(last, /attached an image/);
 });
 
-test('tool call web_search rồi trả lời kèm nguồn', async () => {
+test('web_search tool call, then an answer with the source', async () => {
   const tavily = {
     search: async () => ({
-      results: [{ title: 'Giá vàng', url: 'https://vnexpress.net/abc', content: 'Giá vàng tăng' }],
+      results: [{ title: 'Gold price', url: 'https://vnexpress.net/abc', content: 'Gold price rises' }],
       images: [],
     }),
   };
   const { agent, sent, nimCalls } = await setup({
     tavily,
     replies: [
-      { toolCalls: [{ id: 'call-1', name: 'web_search', arguments: { query: 'giá vàng' }, rawArguments: '{"query":"giá vàng"}' }] },
-      { content: 'Giá vàng hôm nay tăng (https://vnexpress.net/abc)' },
+      { toolCalls: [{ id: 'call-1', name: 'web_search', arguments: { query: 'gold price' }, rawArguments: '{"query":"gold price"}' }] },
+      { content: 'Gold price is up today (https://vnexpress.net/abc)' },
     ],
   });
 
-  await agent.handle(textEvent('@Bot deepseek giá vàng hôm nay?'));
+  await agent.handle(textEvent('@Bot deepseek gold price today?'));
   assert.equal(nimCalls.length, 2);
   assert.equal(nimCalls[1].messages.some((message) => message.role === 'tool'), true);
   assert.match(sent.at(-1).text, /vnexpress/);
 });
 
-test('lỗi model trả lời xin lỗi thay vì crash', async () => {
+test('model errors produce an apology instead of a crash', async () => {
   const { agent, sent } = await setup({ nimError: new Error('boom') });
-  await agent.handle(textEvent('chào'));
+  await agent.handle(textEvent('hi'));
   assert.equal(sent.length, 1);
-  assert.match(sent[0].text, /Xin lỗi/);
+  assert.match(sent[0].text, /Sorry/);
 });
 
-test('tắt typing TRƯỚC khi gửi tin đầu tiên', async () => {
+test('stops typing BEFORE sending the first message', async () => {
   const { agent, events } = await setup({ configOverrides: { typing: true } });
-  await agent.handle(textEvent('chào'));
+  await agent.handle(textEvent('hi'));
   assert.equal(events[0], 'typing:stop');
   assert.ok(events.includes('send'));
 });
 
-test('không giới hạn số tin trả lời khi MAX_MESSAGES_PER_REPLY=0', async () => {
+test('no reply-message limit when MAX_MESSAGES_PER_REPLY=0', async () => {
   const { agent, sent } = await setup({
     replies: [{ content: 'A'.repeat(12_000) }],
     configOverrides: { maxMessagesPerReply: 0 },
   });
-  await agent.handle(textEvent('viết dài vào'));
-  assert.ok(sent.length >= 7, `chỉ gửi ${sent.length} tin`);
+  await agent.handle(textEvent('write something long'));
+  assert.ok(sent.length >= 7, `only sent ${sent.length} messages`);
 });
 
-test('nhận sticker thì trả lại đúng sticker (echo)', async () => {
+test('an incoming sticker is echoed back unchanged', async () => {
   const { agent, sentStickers, sent } = await setup();
   await agent.handle(
     textEvent('', {
@@ -276,110 +276,110 @@ test('nhận sticker thì trả lại đúng sticker (echo)', async () => {
   assert.equal(sent.length, 0);
 });
 
-test('/sticker gửi sticker theo cảm xúc', async () => {
+test('/sticker sends a sticker for the given mood', async () => {
   const { agent, sentStickers } = await setup();
-  await agent.handle(textEvent('/sticker chào'));
+  await agent.handle(textEvent('/sticker greeting'));
   assert.equal(sentStickers.length, 1);
   assert.equal(sentStickers[0].stickerId, 'd8fa8021bc64553a0c75');
 });
 
-test('vẫn giữ câu hỏi khi model lỗi', async () => {
+test('keeps the question when the model fails', async () => {
   const { agent, store } = await setup({ nimError: new Error('boom') });
-  await agent.handle(textEvent('chào'));
+  await agent.handle(textEvent('hi'));
   const record = await store.get('chat-1');
   assert.equal(record.messages[0].role, 'user');
-  assert.match(String(record.messages[0].text), /chào/);
+  assert.match(String(record.messages[0].text), /hi/);
   assert.equal(record.turns, 1);
 });
 
-test('PROGRESSIVE=on gửi tách đoạn sớm', async () => {
+test('PROGRESSIVE=on sends split segments early', async () => {
   const head = `${'a'.repeat(140)}. `;
   const { agent, sent } = await setup({
-    replies: [{ content: `${head}phần còn lại` }],
+    replies: [{ content: `${head}the rest` }],
     deltaText: head,
     configOverrides: { progressive: 'on' },
   });
-  await agent.handle(textEvent('kể chuyện dài'));
-  assert.ok(sent.length >= 2, `chỉ gửi ${sent.length} tin`);
+  await agent.handle(textEvent('tell me a long story'));
+  assert.ok(sent.length >= 2, `only sent ${sent.length} messages`);
   assert.match(sent[0].text, /^a+\./);
 });
 
-test('meta.split=off gộp trả lời vào một tin dù PROGRESSIVE=on', async () => {
+test('meta.split=off merges the reply into one message even with PROGRESSIVE=on', async () => {
   const head = `${'a'.repeat(140)}. `;
   const { agent, sent, store } = await setup({
-    replies: [{ content: `${head}phần còn lại` }],
+    replies: [{ content: `${head}the rest` }],
     deltaText: head,
     configOverrides: { progressive: 'on' },
   });
   const record = await store.get('chat-1');
   record.meta.split = 'off';
-  await agent.handle(textEvent('kể chuyện dài'));
-  assert.equal(sent.length, 1, `gửi ${sent.length} tin`);
-  assert.match(sent[0].text, /phần còn lại/);
+  await agent.handle(textEvent('tell me a long story'));
+  assert.equal(sent.length, 1, `sent ${sent.length} messages`);
+  assert.match(sent[0].text, /the rest/);
 });
 
-test('dedupe bền: message_id đã lưu trong context thì bỏ qua', async () => {
+test('durable dedupe: a message_id already stored in context is skipped', async () => {
   const { agent, sent, store } = await setup();
   const record = await store.get('chat-1');
   record.seen = ['msg-old'];
-  await agent.handle(textEvent('chào lại', { messageId: 'msg-old' }));
+  await agent.handle(textEvent('hello again', { messageId: 'msg-old' }));
   assert.equal(sent.length, 0);
 });
 
-test('USER_RATE_LIMIT_PER_MINUTE chặn spam theo người gửi', async () => {
+test('USER_RATE_LIMIT_PER_MINUTE blocks spam per sender', async () => {
   const { agent, sent } = await setup({ configOverrides: { userRateLimitPerMinute: 1 } });
-  await agent.handle(textEvent('một'));
-  await agent.handle(textEvent('hai'));
+  await agent.handle(textEvent('one'));
+  await agent.handle(textEvent('two'));
   assert.equal(sent.length, 1);
 });
 
-test('drain chờ tin đang xử lý gửi xong', async () => {
+test('drain waits for in-flight messages to finish sending', async () => {
   const { agent, sent } = await setup({ delayMs: 60 });
-  const task = agent.enqueue(textEvent('chờ tôi'));
+  const task = agent.enqueue(textEvent('wait for me'));
   const left = await agent.drain(5000);
   assert.equal(left, 0);
   await task;
   assert.equal(sent.length, 1);
 });
 
-test('tool round không làm mất phần trả lời cuối', async () => {
+test('a tool round does not lose the final part of the reply', async () => {
   const head = `${'a'.repeat(140)}. `;
   const { agent, sent } = await setup({
     replies: [
       { content: head, toolCalls: [{ id: 'c1', name: 'web_search', arguments: { query: 'x' } }] },
-      { content: 'câu trả lời cuối' },
+      { content: 'final answer' },
     ],
     deltaText: head,
     configOverrides: { progressive: 'on' },
   });
-  await agent.handle(textEvent('tìm giúp'));
+  await agent.handle(textEvent('search for me'));
   assert.ok(
-    sent.some((message) => /câu trả lời cuối/.test(message.text)),
+    sent.some((message) => /final answer/.test(message.text)),
     `sent=${JSON.stringify(sent)}`,
   );
 });
 
-test('MAX_MESSAGES_PER_REPLY=1 thì không tách sớm, không mất phần còn lại', async () => {
+test('MAX_MESSAGES_PER_REPLY=1 does not split early and loses nothing', async () => {
   const head = `${'b'.repeat(140)}. `;
   const { agent, sent } = await setup({
-    replies: [{ content: `${head}phần cuối` }],
+    replies: [{ content: `${head}the ending` }],
     deltaText: head,
     configOverrides: { progressive: 'on', maxMessagesPerReply: 1 },
   });
-  await agent.handle(textEvent('kể chuyện'));
+  await agent.handle(textEvent('tell me a story'));
   assert.equal(sent.length, 1);
-  assert.match(sent[0].text, /phần cuối/);
+  assert.match(sent[0].text, /the ending/);
 });
 
-test('queue đầy thì bỏ tin và báo bận', async () => {
+test('a full queue drops the message and reports busy', async () => {
   const { agent, sent } = await setup({ delayMs: 40, configOverrides: { maxQueueDepth: 1 } });
-  const first = agent.enqueue(textEvent('một'));
-  const second = agent.enqueue(textEvent('hai'));
+  const first = agent.enqueue(textEvent('one'));
+  const second = agent.enqueue(textEvent('two'));
   await Promise.all([first, second]);
-  assert.ok(sent.some((message) => /nhiều tin/.test(message.text)));
+  assert.ok(sent.some((message) => /too many messages/.test(message.text)));
 });
 
-test('planAttemptBudget: non-streaming chừa 25% deadline cho fallback', () => {
+test('planAttemptBudget: non-streaming reserves 25% of the deadline for fallback', () => {
   const first = agentTest.planAttemptBudget({
     remainingMs: 30_000,
     attempt: 1,
@@ -403,7 +403,7 @@ test('planAttemptBudget: non-streaming chừa 25% deadline cho fallback', () => 
   assert.ok(second.reserveMs >= 2500);
 });
 
-test('planAttemptBudget: streaming dùng trọn deadline, TTFT tối đa 9s', () => {
+test('planAttemptBudget: streaming uses the whole deadline, TTFT capped at 9s', () => {
   const plan = agentTest.planAttemptBudget({
     remainingMs: 30_000,
     attempt: 1,
@@ -416,7 +416,7 @@ test('planAttemptBudget: streaming dùng trọn deadline, TTFT tối đa 9s', ()
   assert.equal(plan.ttftMs, 9000);
 });
 
-test('planAttemptBudget: deadline sát thì attempt ngắn, không đủ chỗ fallback', () => {
+test('planAttemptBudget: a tight deadline gives a short attempt with no room for fallback', () => {
   const plan = agentTest.planAttemptBudget({
     remainingMs: 3000,
     attempt: 1,
@@ -429,75 +429,77 @@ test('planAttemptBudget: deadline sát thì attempt ngắn, không đủ chỗ f
   assert.equal(plan.timeoutMs, 1500);
 });
 
-test('primary lỗi retryable: retry rồi fallback, user vẫn nhận câu trả lời', async () => {
+test('retryable primary failure: retry then fallback, the user still gets an answer', async () => {
   const { agent, sent, nimCalls } = await setup({
     primaryError: new HttpError('upstream down', { status: 503 }),
   });
-  await agent.handle(textEvent('chào'));
+  await agent.handle(textEvent('hi'));
 
-  assert.equal(nimCalls.length, 3); // 2 lần primary + 1 fallback
-  assert.match(sent.at(-1).text, /Xin chào/);
+  assert.equal(nimCalls.length, 3); // 2 primary attempts + 1 fallback
+  assert.match(sent.at(-1).text, /Hello/);
 });
 
-test('context thời gian: message user riêng, bền vững và không sửa lượt user', async () => {
+test('time context: a separate, durable user message that never alters the user turn', async () => {
   const { agent, store } = await setup({ replies: [{ content: 'A' }, { content: 'B' }] });
-  await agent.handle(textEvent('hôm nay thế nào', { messageId: 'm1' }));
+  await agent.handle(textEvent('h\u00f4m nay th\u1ebf n\u00e0o', { messageId: 'm1' }));
 
   const record = await store.get('chat-1');
   const timeEntries = record.messages.filter((m) => m.kind === 'context' && m.source === 'runtime:time');
   assert.equal(timeEntries.length, 1);
-  assert.match(timeEntries[0].text, /Thời gian hiện tại/);
+  assert.match(timeEntries[0].text, /Th\u1eddi gian hi\u1ec7n t\u1ea1i/);
   const userTurn = record.messages.find((m) => m.kind === 'turn' && m.role === 'user');
-  assert.equal(userTurn.text.includes('Thời gian hiện tại'), false);
+  assert.equal(userTurn.text.includes('Th\u1eddi gian hi\u1ec7n t\u1ea1i'), false);
 });
 
-test('context thời gian được refresh, không nhân đôi qua các lượt', async () => {
+test('time context is refreshed and never duplicated across turns', async () => {
   const { agent, store } = await setup({ replies: [{ content: 'A' }, { content: 'B' }] });
-  await agent.handle(textEvent('hôm nay thế nào', { messageId: 'm1' }));
-  await agent.handle(textEvent('mai đi học không', { messageId: 'm2' }));
+  await agent.handle(textEvent('h\u00f4m nay th\u1ebf n\u00e0o', { messageId: 'm1' }));
+  await agent.handle(textEvent('mai \u0111i h\u1ecdc kh\u00f4ng', { messageId: 'm2' }));
 
   const record = await store.get('chat-1');
   const timeEntries = record.messages.filter((m) => m.kind === 'context' && m.source === 'runtime:time');
   assert.equal(timeEntries.length, 1);
 });
 
-test('context thời gian biến mất khi lượt mới không nhắc mốc thời gian', async () => {
+test('time context disappears when the new turn mentions no time marker', async () => {
   const { agent, store } = await setup({ replies: [{ content: 'A' }, { content: 'B' }] });
-  await agent.handle(textEvent('hôm nay thế nào', { messageId: 'm1' }));
-  await agent.handle(textEvent('giải thích TCP', { messageId: 'm2' }));
+  await agent.handle(textEvent('h\u00f4m nay th\u1ebf n\u00e0o', { messageId: 'm1' }));
+  await agent.handle(textEvent('explain TCP', { messageId: 'm2' }));
 
   const record = await store.get('chat-1');
   assert.equal(record.messages.some((m) => m.kind === 'context' && m.source === 'runtime:time'), false);
 });
 
-test('câu hỏi thường không chèn ngày giờ vào prompt gửi model', async () => {
+test('ordinary questions do not inject date/time into the prompt sent to the model', async () => {
   const { agent, nimCalls } = await setup();
-  await agent.handle(textEvent('giải thích TCP'));
+  await agent.handle(textEvent('explain TCP'));
   const lastUser = [...nimCalls.at(-1).messages].reverse().find((message) => message.role === 'user');
-  assert.equal(lastUser.content.includes('Thời gian hiện tại'), false);
-  assert.equal(lastUser.content.includes('Độ dài'), false);
+  assert.equal(lastUser.content.includes('Th\u1eddi gian hi\u1ec7n t\u1ea1i'), false);
+  assert.equal(lastUser.content.includes('Length'), false);
 });
 
-test('yêu cầu ngắn không chèn ghi chú độ dài vào prompt gửi model', async () => {
+test('short requests do not inject a length note into the prompt sent to the model', async () => {
   const { agent, nimCalls } = await setup();
-  await agent.handle(textEvent('giải thích TCP ngắn thôi'));
+  await agent.handle(textEvent('explain TCP briefly'));
   const lastUser = [...nimCalls.at(-1).messages].reverse().find((message) => message.role === 'user');
-  assert.equal(lastUser.content.includes('Độ dài'), false);
+  assert.equal(lastUser.content.includes('Length'), false);
 });
 
-test('câu hỏi có mốc thời gian: payload có message context thời gian', async () => {
+test('a question with a time marker: the payload has a time context message', async () => {
   const { agent, nimCalls } = await setup();
-  await agent.handle(textEvent('hôm nay thế nào'));
+  await agent.handle(textEvent('h\u00f4m nay th\u1ebf n\u00e0o'));
   const messages = nimCalls.at(-1).messages;
   assert.ok(
-    messages.some((message) => typeof message.content === 'string' && message.content.includes('Thời gian hiện tại')),
+    messages.some(
+      (message) => typeof message.content === 'string' && message.content.includes('Th\u1eddi gian hi\u1ec7n t\u1ea1i'),
+    ),
   );
 });
 
-test('context overflow: nén context rồi thử lại, không báo lỗi cho user', async () => {
+test('context overflow: compacts the context then retries, no error shown to the user', async () => {
   const { agent, sent, store } = await setup({
     overflowFirst: true,
-    replies: [{ content: 'Đã trả lời sau khi nén' }],
+    replies: [{ content: 'Answered after compaction' }],
     configOverrides: { context: { keepRecent: 4 } },
   });
   const record = await store.get('chat-1', { chatType: 'GROUP' });
@@ -505,41 +507,41 @@ test('context overflow: nén context rồi thử lại, không báo lỗi cho us
     record.messages.push({
       role: index % 2 ? 'assistant' : 'user',
       kind: 'turn',
-      text: `tin cũ ${index}`,
+      text: `old message ${index}`,
       ts: index,
     });
   }
   store.touch('chat-1');
 
-  await agent.handle(textEvent('câu hỏi mới', { messageId: 'overflow-1' }));
+  await agent.handle(textEvent('new question', { messageId: 'overflow-1' }));
 
-  assert.match(sent.at(-1).text, /sau khi nén/);
+  assert.match(sent.at(-1).text, /after compaction/);
   const updated = await store.get('chat-1');
   assert.equal(updated.messages.some((message) => message.kind === 'summary'), true);
 });
 
-test('lượt 2 gửi kèm tin nhắn user + assistant của lượt 1 lên API', async () => {
+test('turn 2 sends turn 1 user and assistant messages to the API', async () => {
   const { agent, nimCalls } = await setup({
-    replies: [{ content: 'Chào Nam' }, { content: 'Bạn tên Nam' }],
+    replies: [{ content: 'Hi Nam' }, { content: 'Your name is Nam' }],
   });
 
-  await agent.handle(textEvent('mình tên Nam'));
-  await agent.handle(textEvent('mình tên gì'));
+  await agent.handle(textEvent('my name is Nam'));
+  await agent.handle(textEvent('what is my name'));
 
   const payload = nimCalls.at(-1).messages;
   assert.equal(
-    payload.some((message) => message.role === 'user' && String(message.content).includes('mình tên Nam')),
+    payload.some((message) => message.role === 'user' && String(message.content).includes('my name is Nam')),
     true,
   );
   assert.equal(
-    payload.some((message) => message.role === 'assistant' && String(message.content).includes('Chào Nam')),
+    payload.some((message) => message.role === 'assistant' && String(message.content).includes('Hi Nam')),
     true,
   );
-  // Câu hỏi mới nhất vẫn nằm cuối payload.
-  assert.match(String(payload.at(-1).content), /mình tên gì/);
+  // The newest question is still last in the payload.
+  assert.match(String(payload.at(-1).content), /what is my name/);
 });
 
-test('log console hiện tin user, tin bot, tên model, tok/s và thinking', async () => {
+test('console log shows the user message, bot message, model name, tok/s and thinking', async () => {
   /** @type {string[]} */
   const lines = [];
   const capture = {
@@ -552,29 +554,29 @@ test('log console hiện tin user, tin bot, tên model, tok/s và thinking', asy
 
   const { agent } = await setup({
     logger: capture,
-    replies: [{ content: 'Chào Nam, khỏe không?', reasoning: 'Người dùng tên Nam.' }],
+    replies: [{ content: 'Hi Nam, how are you?', reasoning: 'The user is named Nam.' }],
   });
-  await agent.handle(textEvent('mình tên Nam'));
+  await agent.handle(textEvent('my name is Nam'));
 
   const log = lines.join('\n');
-  assert.match(log, /💬 Nam: mình tên Nam/);
-  assert.match(log, /🧠 thinking: Người dùng tên Nam\./);
-  assert.match(log, /🤖 bot: Chào Nam, khỏe không\?/);
+  assert.match(log, /💬 Nam: my name is Nam/);
+  assert.match(log, /🧠 thinking: The user is named Nam\./);
+  assert.match(log, /🤖 bot: Hi Nam, how are you\?/);
   assert.match(log, /✅ replied · deepseek-flash · 10000 tok\/s/);
   assert.match(log, /"model":"deepseek-flash"/);
   assert.match(log, /"tps":10000/);
 });
 
-test('findBreak cắt ngay sau dấu câu, không lặp dấu', () => {
-  const buffer = `${'a'.repeat(100)}. Phần tiếp theo`;
+test('findBreak cuts right after punctuation without repeating the mark', () => {
+  const buffer = `${'a'.repeat(100)}. Next part`;
   const cut = agentTest.findBreak(buffer);
   assert.equal(buffer.slice(0, cut), `${'a'.repeat(100)}.`);
-  assert.equal(buffer.slice(cut), ' Phần tiếp theo');
+  assert.equal(buffer.slice(cut), ' Next part');
 
-  const paragraph = `${'b'.repeat(80)}\n\nĐoạn mới`;
+  const paragraph = `${'b'.repeat(80)}\n\nNew paragraph`;
   assert.equal(paragraph.slice(0, agentTest.findBreak(paragraph)), `${'b'.repeat(80)}\n\n`);
 
-  // không cắt ngay sau số thứ tự trơ trọi
+  // do not cut right after a dangling list number
   const danglingList = `${'c'.repeat(120)}\n2. `;
   const danglingCut = agentTest.findBreak(danglingList);
   assert.equal(danglingCut, 121);

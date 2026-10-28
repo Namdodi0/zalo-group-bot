@@ -12,14 +12,14 @@ function payload() {
       message: {
         from: { id: 'u1', display_name: 'Nam', is_bot: false },
         chat: { id: 'g1', chat_type: 'GROUP' },
-        text: 'xin chào',
+        text: 'hello',
         message_id: 'm1',
       },
     },
   };
 }
 
-test('webhook: secret, JSON hỏng, dispatch event, query string', async () => {
+test('webhook: secret, broken JSON, event dispatch, query string', async () => {
   const config = makeConfig();
   config.webhook = { ...config.webhook, host: '127.0.0.1', port: 0 };
 
@@ -36,22 +36,22 @@ test('webhook: secret, JSON hỏng, dispatch event, query string', async () => {
   const headers = { 'content-type': 'application/json', 'x-bot-api-secret-token': config.webhook.secret };
 
   try {
-    // sai secret
+    // wrong secret
     let response = await fetch(url, { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' });
     assert.equal(response.status, 403);
 
-    // JSON hỏng → 400 để Zalo retry
+    // broken JSON → 400 so Zalo retries
     response = await fetch(url, { method: 'POST', headers, body: 'not-json' });
     assert.equal(response.status, 400);
 
-    // event hợp lệ
+    // valid event
     response = await fetch(url, { method: 'POST', headers, body: JSON.stringify(payload()) });
     assert.equal(response.status, 200);
     await new Promise((resolve) => setTimeout(resolve, 20));
     assert.equal(events.length, 1);
     assert.equal(events[0].chatId, 'g1');
 
-    // path có query string vẫn khớp
+    // path with a query string still matches
     response = await fetch(`${url}?x=1`, { method: 'POST', headers, body: '{}' });
     assert.equal(response.status, 200);
 
@@ -59,8 +59,8 @@ test('webhook: secret, JSON hỏng, dispatch event, query string', async () => {
     response = await fetch(`http://127.0.0.1:${info.port}/healthz`);
     assert.equal(response.status, 200);
 
-    // path khác → 404
-    response = await fetch(`http://127.0.0.1:${info.port}/khac`, { method: 'POST', headers, body: '{}' });
+    // different path → 404
+    response = await fetch(`http://127.0.0.1:${info.port}/other`, { method: 'POST', headers, body: '{}' });
     assert.equal(response.status, 404);
   } finally {
     await server.stop();

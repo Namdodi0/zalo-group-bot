@@ -1,8 +1,8 @@
 import { MESSAGE_KIND } from '../record.js';
 
 /**
- * Rút gọn tool-result cũ để giảm áp lực context trước khi phải tóm tắt.
- * Chỉ sửa tool-result, không đụng cặp tool-call.
+ * Shorten old tool-results to reduce context pressure before summarization is needed.
+ * Only touches tool-results, never the tool-call pairs.
  * @param {any} record
  * @param {{keepChars: number, keepRecent?: number}} options
  */
@@ -20,13 +20,13 @@ export function pruneToolResults(record, options) {
     if (text.length <= keepChars) continue;
 
     if (keepChars === 0) {
-      message.text = `[kết quả tool đã rút gọn: ${text.length} ký tự]`;
+      message.text = `[tool result pruned: ${text.length} chars]`;
     } else {
       const headLength = Math.floor(keepChars * 0.6);
       const tailLength = Math.max(0, keepChars - headLength);
       const head = text.slice(0, headLength);
       const tail = tailLength ? text.slice(-tailLength) : '';
-      message.text = `${head}\n… [đã rút gọn ${text.length - keepChars} ký tự] …${tail ? `\n${tail}` : ''}`;
+      message.text = `${head}\n… [pruned ${text.length - keepChars} chars] …${tail ? `\n${tail}` : ''}`;
     }
     message.pruned = true;
     changed = true;

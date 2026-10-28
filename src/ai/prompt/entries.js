@@ -1,8 +1,8 @@
 import { formatNow } from '../../text/format.js';
 
 /**
- * Tin nhắn có nhắc mốc thời gian tương đối mới cần biết "hôm nay là ngày nào".
- * Câu hỏi thường không chèn giờ để model không nhắc lại ngày giờ vô cớ.
+ * Only messages that mention a relative point in time need to know "what day is it today".
+ * Ordinary questions get no timestamp so the model does not restate the date for no reason.
  */
 export const TIME_HINT_RE =
   /(?:^|[\s,.;:!?()"'“”])(?:hôm nay|hôm qua|hôm kia|hôm trước|hôm bữa|hôm nào|ngày mai|ngày mốt|sáng mai|chiều mai|tối mai|sáng nay|trưa nay|chiều nay|tối nay|đêm nay|tuần này|tuần sau|tuần trước|tuần tới|tuần rồi|tháng này|tháng sau|tháng trước|tháng tới|tháng rồi|năm nay|năm sau|năm trước|năm rồi|cuối tuần|đầu tuần|cuối tháng|đầu tháng|bây giờ|hiện tại|lúc này|mấy giờ|giờ nào|giờ rồi|thứ mấy|ngày mấy|tháng mấy|bao giờ|khi nào|bao lâu|deadline|hạn chót|hạn nộp|mai|mốt|noel|giáng sinh|tết|sinh nhật)(?=$|[\s,.;:!?()"'“”])/i;
@@ -13,7 +13,8 @@ export function needsTimeContext(text) {
 }
 
 /**
- * Dòng thời gian hiện tại, materialize thành message user bền vững.
+ * Current-time line, materialised as a durable user message.
+ * The Vietnamese marker is kept verbatim because the system rules reference it by that exact text.
  * @param {Date} [date]
  */
 export function timeContextText(date = new Date()) {

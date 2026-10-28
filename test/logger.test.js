@@ -22,7 +22,7 @@ function jsonLogger(extra = {}) {
   return { logger, out, err };
 }
 
-test('JSON: redact secret nhưng giữ các key không nhạy cảm', () => {
+test('JSON: redacts secrets but keeps non-sensitive keys', () => {
   const { logger, out, err } = jsonLogger();
   logger.info('cfg', {
     token: 'abc',
@@ -42,16 +42,16 @@ test('JSON: redact secret nhưng giữ các key không nhạy cảm', () => {
   assert.equal(err.lines.length, 0);
 });
 
-test('JSON: warn/error đi vào stderr, debug bị lọc', () => {
+test('JSON: warn/error go to stderr, debug is filtered', () => {
   const { logger, out, err } = jsonLogger();
-  logger.debug('ẩn');
-  logger.warn('cảnh báo');
-  logger.error('lỗi');
+  logger.debug('hidden');
+  logger.warn('warning');
+  logger.error('error');
   assert.equal(out.lines.length, 0);
   assert.equal(err.lines.length, 2);
 });
 
-test('pretty: một dòng gọn với giờ, icon, message, fields', () => {
+test('pretty: one compact line with time, icon, message, fields', () => {
   const out = sink();
   const logger = createLogger({
     level: 'info',
@@ -66,7 +66,7 @@ test('pretty: một dòng gọn với giờ, icon, message, fields', () => {
   assert.equal(line.includes('\u001b['), false);
 });
 
-test('pretty: icon mặc định theo level, có màu khi bật', () => {
+test('pretty: default icon per level, colored when enabled', () => {
   const out = sink();
   const logger = createLogger({
     level: 'debug',
@@ -75,34 +75,34 @@ test('pretty: icon mặc định theo level, có màu khi bật', () => {
     stdout: /** @type {any} */ (out.stream),
     stderr: /** @type {any} */ (out.stream),
   });
-  logger.info('không icon');
-  logger.warn('cảnh báo');
-  logger.error('lỗi');
+  logger.info('no icon');
+  logger.warn('warning');
+  logger.error('error');
   assert.match(out.lines[0], /ℹ/);
   assert.match(out.lines[1], /▲/);
   assert.match(out.lines[2], /✖/);
   for (const line of out.lines) assert.ok(line.includes('\u001b['));
 });
 
-test('pretty: vẫn redact và format lỗi gọn', () => {
+test('pretty: still redacts and formats errors compactly', () => {
   const out = sink();
   const logger = createLogger({
     level: 'info',
     format: 'pretty',
     color: 'never',
-    secrets: ['mat-khau-sieu-bi-mat'],
+    secrets: ['super-secret-password'],
     stdout: /** @type {any} */ (out.stream),
     stderr: /** @type {any} */ (out.stream),
   });
-  logger.error('gửi thất bại', { token: 'mat-khau-sieu-bi-mat', error: new Error('mất kết nối') });
+  logger.error('send failed', { token: 'super-secret-password', error: new Error('connection lost') });
   const line = out.lines[0];
-  assert.equal(line.includes('mat-khau-sieu-bi-mat'), false);
+  assert.equal(line.includes('super-secret-password'), false);
   assert.match(line, /token=\*\*\*/);
-  assert.match(line, /mất kết nối/);
-  assert.equal(line.includes('\n'), true); // newline cuối dòng
+  assert.match(line, /connection lost/);
+  assert.equal(line.includes('\n'), true); // trailing newline
 });
 
-test('pretty: value dài bị cắt, object nén thành JSON', () => {
+test('pretty: long values are truncated, objects compacted to JSON', () => {
   const out = sink();
   const logger = createLogger({
     level: 'info',
@@ -112,22 +112,22 @@ test('pretty: value dài bị cắt, object nén thành JSON', () => {
   });
   logger.info('x', { long: 'a'.repeat(200), obj: { a: 1 } });
   const line = out.lines[0];
-  assert.ok(line.includes('…'), 'phải có dấu cắt');
+  assert.ok(line.includes('…'), 'must contain an ellipsis');
   assert.match(line, /obj=\{"a":1\}/);
 });
 
-test('banner căn đều kể cả emoji', () => {
+test('banner stays aligned even with emoji', () => {
   const out = sink();
   printBanner(out.stream, ['🤖 Bot deepseek', 'nvidia/nemotron-3.5-super-vl-120b-a12b'], { color: 'never' });
   const lines = out.lines.join('').trimEnd().split('\n');
   assert.equal(lines.length, 4);
   const widths = lines.map((line) => visualWidth(line));
-  assert.equal(new Set(widths).size, 1, `lệch cột: ${widths.join(',')}`);
+  assert.equal(new Set(widths).size, 1, `misaligned columns: ${widths.join(',')}`);
   assert.match(lines[0], /^╭─+╮$/);
   assert.match(lines[3], /^╰─+╯$/);
 });
 
-test('visualWidth tính emoji là 2 cột', () => {
+test('visualWidth counts emoji as 2 columns', () => {
   assert.equal(visualWidth('abc'), 3);
   assert.equal(visualWidth('🤖'), 2);
   assert.equal(visualWidth('a🤖b'), 4);

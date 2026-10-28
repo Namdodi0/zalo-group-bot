@@ -10,7 +10,7 @@ async function tempDir() {
   return fsp.mkdtemp(path.join(os.tmpdir(), 'zalo-env-'));
 }
 
-test('parseEnvFile: key=value, comment, dòng trắng, tiền tố export', () => {
+test('parseEnvFile: key=value, comments, blank lines, export prefix', () => {
   const entries = parseEnvFile(
     ['# comment', '', 'ZALO_BOT_TOKEN=123:abc', 'export NIM_API_KEY=nvapi-x', 'SPACED = 1 '].join('\n'),
   );
@@ -21,7 +21,7 @@ test('parseEnvFile: key=value, comment, dòng trắng, tiền tố export', () =
   ]);
 });
 
-test('parseEnvFile: bỏ BOM + CRLF (file do panel/Notepad ghi)', () => {
+test('parseEnvFile: strips BOM + CRLF (files written by panels/Notepad)', () => {
   const text = '\uFEFFZALO_BOT_TOKEN=123:abc\r\nNIM_API_KEY=nvapi-x\r\n';
   assert.deepEqual(parseEnvFile(text), [
     ['ZALO_BOT_TOKEN', '123:abc'],
@@ -29,19 +29,19 @@ test('parseEnvFile: bỏ BOM + CRLF (file do panel/Notepad ghi)', () => {
   ]);
 });
 
-test('parseEnvFile: quote đơn/kép và comment cuối dòng', () => {
-  assert.deepEqual(parseEnvFile('A="có # không phải comment"'), [['A', 'có # không phải comment']]);
-  assert.deepEqual(parseEnvFile("B='giữ nguyên $VAR'"), [['B', 'giữ nguyên $VAR']]);
-  assert.deepEqual(parseEnvFile('C=abc  # chú thích'), [['C', 'abc']]);
+test('parseEnvFile: single/double quotes and trailing comments', () => {
+  assert.deepEqual(parseEnvFile('A="has # not a comment"'), [['A', 'has # not a comment']]);
+  assert.deepEqual(parseEnvFile("B='keep $VAR as is'"), [['B', 'keep $VAR as is']]);
+  assert.deepEqual(parseEnvFile('C=abc  # note'), [['C', 'abc']]);
   assert.deepEqual(parseEnvFile('D="a\\nb"'), [['D', 'a\nb']]);
 });
 
-test('parseEnvFile: bỏ qua dòng rác và key không hợp lệ', () => {
-  const entries = parseEnvFile(['không-có-dấu-bằng', '=no-key', '1BAD=x', 'GOOD=1', '# A=1'].join('\n'));
+test('parseEnvFile: skips junk lines and invalid keys', () => {
+  const entries = parseEnvFile(['no-equals-sign', '=no-key', '1BAD=x', 'GOOD=1', '# A=1'].join('\n'));
   assert.deepEqual(entries, [['GOOD', '1']]);
 });
 
-test('loadEnvFiles: nạp .env, biến có sẵn trong môi trường thắng file', async () => {
+test('loadEnvFiles: loads .env, variables already in the environment win over the file', async () => {
   const dir = await tempDir();
   await fsp.writeFile(path.join(dir, '.env'), 'ZALO_BOT_TOKEN=from-file\nNIM_API_KEY=nvapi-file\n');
   const env = { NIM_API_KEY: 'nvapi-panel' };
@@ -54,7 +54,7 @@ test('loadEnvFiles: nạp .env, biến có sẵn trong môi trường thắng fi
   assert.deepEqual(report.missing, ['.env.local']);
 });
 
-test('loadEnvFiles: biến rỗng sẵn có được phép điền từ file', async () => {
+test('loadEnvFiles: an existing empty variable may be filled from the file', async () => {
   const dir = await tempDir();
   await fsp.writeFile(path.join(dir, '.env'), 'ZALO_BOT_TOKEN=from-file\n');
   const env = { ZALO_BOT_TOKEN: '' };
@@ -62,7 +62,7 @@ test('loadEnvFiles: biến rỗng sẵn có được phép điền từ file', a
   assert.equal(env.ZALO_BOT_TOKEN, 'from-file');
 });
 
-test('loadEnvFiles: không có .env thì không ném lỗi, report ghi missing', async () => {
+test('loadEnvFiles: no .env does not throw, the report records it as missing', async () => {
   const dir = await tempDir();
   const env = {};
   const report = loadEnvFiles({ cwd: dir, env });
@@ -71,7 +71,7 @@ test('loadEnvFiles: không có .env thì không ném lỗi, report ghi missing',
   assert.equal(report.files.every((file) => file.found === false), true);
 });
 
-test('loadConfig đọc được token từ .env mà không cần cờ --env-file-if-exists', async () => {
+test('loadConfig reads the token from .env without the --env-file-if-exists flag', async () => {
   const dir = await tempDir();
   await fsp.writeFile(
     path.join(dir, '.env'),
@@ -91,19 +91,19 @@ test('loadConfig đọc được token từ .env mà không cần cờ --env-fil
   assert.equal(config.model.defaultAlias, 'nim');
 });
 
-test('describeEnvHints: chỉ ra thư mục và file thiếu khi chưa có .env', async () => {
+test('describeEnvHints: points out the directory and missing files when there is no .env', async () => {
   const dir = await tempDir();
   loadEnvFiles({ cwd: dir, env: {} });
   const hints = describeEnvHints();
   assert.equal(hints.some((line) => line.includes(dir)), true);
-  assert.equal(hints.some((line) => line.includes('.env: không tìm thấy')), true);
-  assert.equal(hints.some((line) => line.includes('tạo file .env')), true);
+  assert.equal(hints.some((line) => line.includes('.env: not found')), true);
+  assert.equal(hints.some((line) => line.includes('create a .env file')), true);
 });
 
-test('describeEnvHints: báo đã nạp bao nhiêu biến khi có .env', async () => {
+test('describeEnvHints: reports how many variables were loaded when .env exists', async () => {
   const dir = await tempDir();
   await fsp.writeFile(path.join(dir, '.env'), 'A=1\nB=2\n');
   loadEnvFiles({ cwd: dir, env: {} });
   const hints = describeEnvHints();
-  assert.equal(hints.some((line) => line.includes('.env: có (2 biến nạp từ file)')), true);
+  assert.equal(hints.some((line) => line.includes('.env: found (2 variables loaded from file)')), true);
 });

@@ -27,7 +27,7 @@ export function freshRecord(chatId, chatType, now = Date.now()) {
 }
 
 /**
- * Nâng record cũ (v1: summary là field riêng) lên v2 mà không mất dữ liệu.
+ * Upgrade an old record (v1: summary was a separate field) to v2 without losing data.
  * @param {any} record
  */
 export function normalizeRecord(record) {
@@ -63,8 +63,8 @@ export function turnEntry(input) {
 }
 
 /**
- * Dynamic context sinh từ provider runtime (thời gian, search...), materialize
- * thành message user bền vững và được refresh mỗi lượt.
+ * Dynamic context produced by the provider runtime (time, search...), materialized
+ * as a durable user message and refreshed on every turn.
  * @param {{source: string, text: string, ts?: number}} input
  */
 export function contextEntry(input) {
@@ -135,7 +135,8 @@ function insertBeforeLastTurn(record, entry) {
 }
 
 /**
- * Đồng bộ context runtime: gỡ entry cũ cùng source, chèn bản mới trước lượt user cuối.
+ * Sync runtime context: remove the old entry with the same source, insert the new one
+ * before the last user turn.
  * @param {any} record
  * @param {Array<{name: string, text: string}>} contexts
  * @param {number} [ts]
@@ -162,7 +163,7 @@ export function latestSummary(record) {
 }
 
 /**
- * Range [start, end) có cắt đôi cặp tool-call/tool-result không.
+ * Whether the range [start, end) splits a tool-call/tool-result pair.
  * @param {any[]} messages
  * @param {number} start
  * @param {number} end

@@ -1,14 +1,14 @@
-# Đóng gói để deploy lên server
+# Packaging for deployment to a server
 
-> Không có thẻ tín dụng (không dùng được Oracle/GCP)? Xem **[DEPLOY-NO-CARD.md](DEPLOY-NO-CARD.md)**
-> — máy ở nhà (Windows, có script `install-windows.ps1`) hoặc Wispbyte free.
+> No credit card (can't use Oracle/GCP)? See **[DEPLOY-NO-CARD.md](DEPLOY-NO-CARD.md)**
+> — a machine at home (Windows, with the `install-windows.ps1` script) or free Wispbyte.
 
-Mục tiêu: gói **sạch** — có code, không có `node_modules` (dev-only), không có `.env`
-(bí mật) và không có lịch sử chat (`data/`).
+Goal: a **clean** package — it has the code, but no `node_modules` (dev-only), no `.env`
+(secrets) and no chat history (`data/`).
 
-## 1. Tạo gói
+## 1. Create the package
 
-Trên máy Windows đang phát triển:
+On the Windows machine you develop on:
 
 ```powershell
 cd zalo-group-bot
@@ -16,55 +16,55 @@ npm run pack
 # -> dist/zalo-group-bot-YYYYMMDD-HHmm.zip
 ```
 
-Script `scripts/pack.ps1` chỉ copy những gì cần:
+The `scripts/pack.ps1` script only copies what is needed:
 
-| Đưa vào gói | Không đưa |
+| Goes into the package | Does not |
 |---|---|
-| `src/`, `scripts/`, `test/`, `test-utils/` | `node_modules/` (32 MB, chỉ để typecheck) |
-| `package.json`, `package-lock.json`, `tsconfig.json` | `.env` (chứa token Zalo, key DeepSeek/NIM/Tavily) |
-| `.env.example`, `.gitignore`, `README.md` | `data/` (lịch sử chat, có thể chứa nội dung riêng tư) |
+| `src/`, `scripts/`, `test/`, `test-utils/` | `node_modules/` (32 MB, only for typecheck) |
+| `package.json`, `package-lock.json`, `tsconfig.json` | `.env` (holds the Zalo token, DeepSeek/NIM/Tavily keys) |
+| `.env.example`, `.gitignore`, `README.md` | `data/` (chat history, may contain private content) |
 | `ecosystem.config.cjs`, `deploy/` | `*.log`, `*.tmp`, `dist/` |
 
-Gói thực tế ~60–80 KB.
+The real package is ~60–80 KB.
 
-## 2. Đưa lên server
+## 2. Upload it to the server
 
 ```powershell
 scp .\dist\zalo-group-bot-*.zip root@SERVER:/opt/zalo/
 ```
 
-`.env` **gửi riêng**, sau khi tạo thư mục:
+Send `.env` **separately**, after creating the directory:
 
 ```powershell
 scp .\.env root@SERVER:/opt/zalo/zalo-group-bot/.env
 ```
 
-Trên server nhớ `chmod 600 .env`.
+On the server, remember `chmod 600 .env`.
 
-## 3. Cài trên server (Ubuntu/Debian)
+## 3. Install on the server (Ubuntu/Debian)
 
 ```bash
-# Node >= 22.9 (project không có runtime dependency nào khác)
+# Node >= 22.9 (the project has no other runtime dependency)
 curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -
 sudo apt-get install -y nodejs unzip
-node -v          # phải >= v22.9
+node -v          # must be >= v22.9
 
 sudo mkdir -p /opt/zalo && cd /opt/zalo
 sudo unzip zalo-group-bot-*.zip -d zalo-group-bot
 cd zalo-group-bot
 chmod 600 .env
 
-# 1 phút kiểm tra trước khi chạy nền
+# a 1-minute check before running in the background
 node --env-file-if-exists=.env --test
 node --env-file-if-exists=.env src/index.js --help
 ```
 
-Không cần `npm install` — dự án không có dependency runtime. Chỉ khi muốn
-`npm run typecheck` mới cần `npm ci`.
+No `npm install` needed — the project has no runtime dependencies. You only need
+`npm ci` if you want to run `npm run typecheck`.
 
-## 4. Chạy nền
+## 4. Run in the background
 
-### Cách A — pm2 (khuyến nghị)
+### Option A — pm2 (recommended)
 
 ```bash
 sudo npm i -g pm2
@@ -73,10 +73,10 @@ pm2 start ecosystem.config.cjs
 pm2 status
 pm2 logs zalo-bot --lines 50
 pm2 save
-pm2 startup                       # chạy đúng dòng nó in ra để tự bật khi reboot
+pm2 startup                       # run exactly the line it prints so it starts on reboot
 ```
 
-### Cách B — systemd
+### Option B — systemd
 
 ```bash
 sudo cp deploy/zalo-bot.service /etc/systemd/system/
@@ -86,27 +86,27 @@ systemctl status zalo-bot
 journalctl -u zalo-bot -f
 ```
 
-Sửa `User=`/`WorkingDirectory=` trong unit file nếu bạn không dùng `/opt/zalo` và user `zalobot`.
+Change `User=`/`WorkingDirectory=` in the unit file if you are not using `/opt/zalo` and the user `zalobot`.
 
-## 5. Kiểm tra sau deploy
+## 5. Check after deploying
 
 ```bash
-# bot gọi được Zalo?
+# can the bot reach Zalo?
 journalctl -u zalo-bot -n 20 | grep -Ei "ready|fatal|token"
 
-# (tuỳ chọn) mở ops endpoint: đặt OPS_PORT=8080 trong .env rồi restart
+# (optional) expose the ops endpoint: set OPS_PORT=8080 in .env then restart
 curl -s http://127.0.0.1:8080/metrics | head -30
 ```
 
-Rồi vào group gõ `@Bot /status` — phải trả về model, context, độ trễ.
+Then go into the group and type `@Bot /status` — it must return the model, context and latency.
 
-## Lưu ý khi chạy trên server
+## Notes for running on a server
 
-- **Polling không cần IP công khai/domain.** Chỉ khi dùng `MODE=webhook` mới cần HTTPS
-  (nginx + certbot, hoặc `cloudflared tunnel`), và khi đó phải đặt `WEBHOOK_PUBLIC_URL`.
-- **Chỉ chạy MỘT instance.** Hai bot cùng token sẽ tranh `getUpdates` và trả 409.
-- **`data/` là state thật** (context, sticker). Backup định kỳ:
+- **Polling needs no public IP/domain.** Only `MODE=webhook` needs HTTPS
+  (nginx + certbot, or `cloudflared tunnel`), and then you must set `WEBHOOK_PUBLIC_URL`.
+- **Run only ONE instance.** Two bots with the same token fight over `getUpdates` and return 409.
+- **`data/` is real state** (context, stickers). Back it up regularly:
   `tar czf /backup/zalo-data-$(date +%F).tgz data/`
-- **Không chạy bằng `root`** nếu không cần: tạo user riêng `zalobot` và `chown -R`.
-- Cập nhật phiên bản: giải nén gói mới đè lên, giữ nguyên `.env` và `data/`,
-  rồi `pm2 restart zalo-bot` (hoặc `systemctl restart zalo-bot`).
+- **Don't run as `root`** unless you have to: create a dedicated `zalobot` user and `chown -R`.
+- Updating the version: unzip the new package on top, keep `.env` and `data/` intact,
+  then `pm2 restart zalo-bot` (or `systemctl restart zalo-bot`).

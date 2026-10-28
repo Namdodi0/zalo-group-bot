@@ -11,7 +11,7 @@ WorkingDirectory=/opt/zalo/zalo-group-bot
 ExecStart=/usr/bin/node --env-file-if-exists=.env src/index.js
 Restart=always
 RestartSec=5
-# Nếu bot bị đẩy vào swap do context phình to
+# If the bot gets pushed into swap because the context balloons
 MemoryMax=512M
 NoNewPrivileges=true
 PrivateTmp=true

@@ -42,7 +42,7 @@ export function createMetrics(options = {}) {
   }
 
   /**
-   * Giá trị tức thời (không phải độ trễ): tốc độ sinh token, số chat đang mở…
+   * Instantaneous value (not a latency): token generation rate, number of open chats…
    * @param {string} name
    * @param {number} value
    */

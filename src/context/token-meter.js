@@ -14,7 +14,7 @@ export function estimateMessageTokens(message) {
 }
 
 /**
- * Hiệu chỉnh ước lượng bằng số token thật từ `usage.prompt_tokens`.
+ * Calibrate the estimate using real token counts from `usage.prompt_tokens`.
  * @param {{initial?: number, min?: number, max?: number}} [options]
  */
 export function createCalibrator(options = {}) {
@@ -45,7 +45,7 @@ export function createCalibrator(options = {}) {
 }
 
 /**
- * Đo áp lực context của một request — không gọi model, deterministic theo input.
+ * Measure the context pressure of a request — no model call, deterministic for the input.
  * @param {{calibrator?: ReturnType<typeof createCalibrator>}} [options]
  */
 export function createTokenMeter(options = {}) {

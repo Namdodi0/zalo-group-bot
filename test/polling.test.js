@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { startPolling } from '../src/zalo/polling.js';
 import { silentLogger } from '../test-utils/helpers.js';
 
-test('polling dispatch event rồi dừng khi abort', async () => {
+test('polling dispatches events then stops on abort', async () => {
   const controller = new AbortController();
   /** @type {any[]} */
   const events = [];
@@ -45,7 +45,7 @@ test('polling dispatch event rồi dừng khi abort', async () => {
   assert.equal(calls, 2);
 });
 
-test('polling once dừng sau 1 lượt', async () => {
+test('polling once stops after one round', async () => {
   let calls = 0;
   const zalo = {
     async getUpdates() {

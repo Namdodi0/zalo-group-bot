@@ -16,44 +16,44 @@ function turns(count) {
   return Array.from({ length: count }, (_, index) => ({
     role: index % 2 ? 'assistant' : 'user',
     kind: 'turn',
-    text: `tin ${index}`,
+    text: `msg ${index}`,
     ts: index,
   }));
 }
 
-test('pruner chỉ rút gọn tool-result cũ, giữ nguyên cặp tool-call', () => {
+test('pruner only shortens old tool-results, leaving the tool-call pair intact', () => {
   const record = recordWith([
     toolCallEntry({ toolCalls: [{ id: 'c1', name: 'web_search', arguments: {} }], ts: 1 }),
     toolResultEntry({ toolCallId: 'c1', text: 'x'.repeat(5000), ts: 2 }),
-    { role: 'user', kind: 'turn', text: 'gần đây', ts: 3 },
+    { role: 'user', kind: 'turn', text: 'recent', ts: 3 },
     { role: 'assistant', kind: 'turn', text: 'ok', ts: 4 },
   ]);
 
   const result = pruneToolResults(record, { keepChars: 600, keepRecent: 2 });
   assert.equal(result.changed, true);
   assert.ok(record.messages[1].text.length < 1000);
-  assert.match(record.messages[1].text, /đã rút gọn/);
+  assert.match(record.messages[1].text, /pruned/);
   assert.equal(record.messages[0].toolCalls.length, 1);
 });
 
-test('summarizer thay range cũ bằng đúng một message summary user-role', async () => {
+test('summarizer replaces the old range with exactly one user-role summary message', async () => {
   const record = recordWith(turns(10));
   const result = await summarizeRange(record, {
     keepRecent: 4,
     summaryMaxChars: 200,
-    summarize: async () => 'TÓM TẮT',
+    summarize: async () => 'SUMMARY',
   });
   assert.equal(result.changed, true);
   assert.equal(record.messages[0].kind, 'summary');
   assert.equal(record.messages[0].role, 'user');
-  assert.equal(record.messages[0].text, 'TÓM TẮT');
+  assert.equal(record.messages[0].text, 'SUMMARY');
   assert.equal(record.messages.length, 5);
 });
 
-test('summarizer lùi boundary để không cắt đôi cặp tool-call/tool-result', async () => {
+test('summarizer moves the boundary back so it never splits a tool-call/tool-result pair', async () => {
   const messages = turns(4);
   messages.push(toolCallEntry({ toolCalls: [{ id: 'c1', name: 'web_search', arguments: {} }], ts: 4 }));
-  messages.push(toolResultEntry({ toolCallId: 'c1', text: 'kết quả', ts: 5 }));
+  messages.push(toolResultEntry({ toolCallId: 'c1', text: 'result', ts: 5 }));
   messages.push(...turns(4));
   const record = recordWith(messages);
 
@@ -68,7 +68,7 @@ test('summarizer lùi boundary để không cắt đôi cặp tool-call/tool-res
   assert.equal(record.messages[0].kind, 'summary');
 });
 
-test('summarizer không làm gì khi range quá ngắn', async () => {
+test('summarizer does nothing when the range is too short', async () => {
   const record = recordWith(turns(3));
   const result = await summarizeRange(record, {
     keepRecent: 8,
@@ -79,7 +79,7 @@ test('summarizer không làm gì khi range quá ngắn', async () => {
   assert.equal(record.messages.length, 3);
 });
 
-test('engine: dưới ngưỡng thì không compaction', async () => {
+test('engine: no compaction below the threshold', async () => {
   const engine = createCompactionEngine({ config: makeConfig(), logger: silentLogger, summarize: async () => 'T' });
   const record = recordWith(turns(10));
   const result = await engine.compactIfNeeded({
@@ -90,7 +90,7 @@ test('engine: dưới ngưỡng thì không compaction', async () => {
   assert.equal(result, null);
 });
 
-test('engine: vượt ngưỡng thì chạy pipeline', async () => {
+test('engine: runs the pipeline above the threshold', async () => {
   const engine = createCompactionEngine({ config: makeConfig(), logger: silentLogger, summarize: async () => 'T' });
   const record = recordWith(turns(12));
   const result = await engine.compactIfNeeded({
@@ -103,7 +103,7 @@ test('engine: vượt ngưỡng thì chạy pipeline', async () => {
   assert.equal(record.messages[0].kind, 'summary');
 });
 
-test('engine: overflow luôn chạy dù pressure thấp', async () => {
+test('engine: overflow always runs even when pressure is low', async () => {
   const engine = createCompactionEngine({ config: makeConfig(), logger: silentLogger, summarize: async () => 'T' });
   const record = recordWith(turns(12));
   const result = await engine.compactIfNeeded({
@@ -114,7 +114,7 @@ test('engine: overflow luôn chạy dù pressure thấp', async () => {
   assert.equal(result.changed, true);
 });
 
-test('engine: manual chạy cả khi không có measure', async () => {
+test('engine: manual runs even without a measure', async () => {
   const engine = createCompactionEngine({ config: makeConfig(), logger: silentLogger, summarize: async () => 'T' });
   const record = recordWith(turns(12));
   const result = await engine.compactIfNeeded({ record, trigger: 'manual' });

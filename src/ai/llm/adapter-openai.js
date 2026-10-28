@@ -39,8 +39,8 @@ function parseChoice(choice) {
 }
 
 /**
- * Tốc độ sinh token: completion tokens chia cho thời gian sinh thật (đã trừ TTFT
- * nếu có), làm tròn 1 chữ số thập phân.
+ * Token generation speed: completion tokens divided by the real generation time (TTFT
+ * subtracted when available), rounded to 1 decimal place.
  * @param {number} tokens
  * @param {number} ms
  * @returns {number}
@@ -53,8 +53,8 @@ function tokensPerSec(tokens, ms) {
 }
 
 /**
- * Map mode chung (none/low/medium/high/auto) sang giá trị `reasoning_effort`
- * mà từng provider chấp nhận. DeepSeek chỉ nhận none|low|high|max.
+ * Map the shared mode (none/low/medium/high/auto) to the `reasoning_effort` value
+ * each provider accepts. DeepSeek only accepts none|low|high|max.
  * @param {string} mode
  * @param {Record<string, string>} map
  */
@@ -80,8 +80,8 @@ export const DEEPSEEK_REASONING_MAP = {
 };
 
 /**
- * Adapter OpenAI-compatible (NVIDIA NIM, DeepSeek, ...).
- * Wire format nằm trọn ở đây; service chỉ biết vocabulary trung lập.
+ * OpenAI-compatible adapter (NVIDIA NIM, DeepSeek, ...).
+ * The wire format lives entirely here; the service only knows the neutral vocabulary.
  * @param {{provider?: string, apiKey: string, baseUrl: string, model: string, http: ReturnType<typeof import('../../http.js').createHttp>, logger: import('../../logger.js').Logger, metrics?: any, defaultTemperature?: number, reasoningMap?: Record<string,string>}} options
  */
 export function createOpenAiCompatAdapter(options) {
@@ -97,7 +97,7 @@ export function createOpenAiCompatAdapter(options) {
 
   const endpoint = `${baseUrl}/chat/completions`;
 
-  // Breaker keyed theo provider+model: một model chậm/treo không khoá cả provider.
+  // Breaker keyed by provider+model: one slow/hung model does not lock the whole provider.
   /** @param {unknown} modelId */
   const routeKey = (modelId) => `${provider}:${String(modelId ?? model)}`;
 
@@ -182,8 +182,8 @@ export function createOpenAiCompatAdapter(options) {
     payload.stream = true;
     payload.stream_options = { include_usage: true };
 
-    // Timeout cho "byte đầu tiên" (TTFT), không phải toàn bộ câu trả lời:
-    // NIM thỉnh thoảng treo request, cần bỏ sớm để retry; nhưng câu trả lời dài vẫn được sinh tiếp.
+    // Timeout for the "first byte" (TTFT), not the whole answer:
+    // NIM sometimes hangs a request and we must bail early to retry; a long answer still keeps generating.
     const ttftMs = input.ttftMs ?? 8000;
     const ttftController = new AbortController();
     let ttftTimer = setTimeout(() => {
@@ -195,7 +195,7 @@ export function createOpenAiCompatAdapter(options) {
     }, ttftMs);
     /** @type {AbortSignal} */
     const streamSignal = input.signal
-      ? // @ts-ignore AbortSignal.any có từ Node 20.3
+      ? // @ts-ignore AbortSignal.any is available since Node 20.3
         AbortSignal.any([input.signal, ttftController.signal])
       : ttftController.signal;
 
@@ -221,7 +221,7 @@ export function createOpenAiCompatAdapter(options) {
     let content = '';
     let reasoning = '';
     let finishReason = '';
-    /** @type {number} mốc nhận được token nội dung đầu tiên (để tính TTFT thật) */
+    /** @type {number} when the first content token arrived (to compute the real TTFT) */
     let firstDeltaAt = 0;
     /** @type {any} */
     let usage = null;
@@ -327,8 +327,8 @@ export function createOpenAiCompatAdapter(options) {
 
     const ms = latency();
     const completionTokens = Number(usage?.completion_tokens ?? 0);
-    // TTFT = từ lúc gửi request tới token nội dung đầu tiên; phần còn lại mới là
-    // thời gian sinh thật, nên tốc độ tok/s tính trên completionMs chứ không phải ms.
+    // TTFT = from sending the request to the first content token; only the rest is
+    // real generation time, so tok/s is computed over completionMs, not ms.
     const firstTokenMs = firstDeltaAt ? firstDeltaAt - started : ms;
     const completionMs = Math.max(0, ms - firstTokenMs);
     const tps = tokensPerSec(completionTokens, completionMs || ms);
@@ -365,8 +365,8 @@ export function createOpenAiCompatAdapter(options) {
   }
 
   /**
-   * Gọi 1 request cực ngắn để "làm nóng" model, giảm cold start cho tin đầu tiên.
-   * Không bao giờ throw và không log ồn: warmup là tối ưu, không phải điều kiện sống còn.
+   * Fire one very short request to "warm up" the model, reducing cold start for the first message.
+   * Never throws and never logs noisily: warmup is an optimization, not a survival requirement.
    * @param {{model?: string, timeoutMs?: number}} [options]
    * @returns {Promise<{ok: boolean, ms: number, model: string, error?: string}>}
    */
@@ -380,7 +380,7 @@ export function createOpenAiCompatAdapter(options) {
         reasoning: 'none',
         maxTokens: 1,
         temperature: 0,
-        // Ngắn thôi: model treo thì bỏ, tin nhắn thật vẫn chạy bình thường.
+        // Keep it short: if the model hangs, drop it; real messages still run normally.
         timeoutMs: options.timeoutMs ?? 8_000,
       });
       const ms = Date.now() - started;

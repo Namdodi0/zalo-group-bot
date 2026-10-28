@@ -1,8 +1,8 @@
 import { MESSAGE_KIND, summaryEntry, toolPairingBalanced } from '../record.js';
 
 /**
- * Nén range cũ thành MỘT message summary (user-role), thay thế đúng range đó.
- * Range phải cân cặp tool-call/tool-result.
+ * Compress an old range into a SINGLE summary message (user role), replacing exactly
+ * that range. The range must have balanced tool-call/tool-result pairs.
  * @param {any} record
  * @param {{keepRecent: number, summaryMaxChars: number, deadline?: number, summarize: (messages: any[], deadline?: number, record?: any) => Promise<string>}} options
  */

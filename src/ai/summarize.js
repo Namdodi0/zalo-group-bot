@@ -2,7 +2,7 @@ import { truncate } from '../text/format.js';
 import { SUMMARY_SYSTEM_PROMPT, buildSummaryInput } from './prompt/index.js';
 
 /**
- * Bộ tóm tắt dùng cho compaction — giữ nguyên route của chat nếu có record.
+ * Summarizer used for compaction — keeps the chat's route when a record is present.
  * @param {{llm: any, logger?: import('../logger.js').Logger}} options
  */
 export function createSummarizer(options) {

@@ -4,10 +4,10 @@ import { createCommands, parseCommand } from '../src/commands/index.js';
 import { createMetrics } from '../src/metrics.js';
 import { makeConfig, silentLogger } from '../test-utils/helpers.js';
 
-test('parseCommand nhận diện lệnh và tham số', () => {
+test('parseCommand recognizes commands and arguments', () => {
   assert.deepEqual(parseCommand('/help'), { name: 'help', args: '' });
-  assert.deepEqual(parseCommand('/search giá vàng hôm nay'), { name: 'search', args: 'giá vàng hôm nay' });
-  assert.equal(parseCommand('xin chào'), null);
+  assert.deepEqual(parseCommand('/search gold price today'), { name: 'search', args: 'gold price today' });
+  assert.equal(parseCommand('hello'), null);
   assert.equal(parseCommand('/'), null);
 });
 
@@ -32,12 +32,12 @@ function deps(overrides = {}) {
     ],
   };
   const stickers = {
-    find: (value) => (String(value).includes('chào') ? { id: 'd8fa8021bc64553a0c75', name: 'Anh Tre Say Hi' } : null),
+    find: (value) => (String(value).includes('hello') ? { id: 'd8fa8021bc64553a0c75', name: 'Anh Tre Say Hi' } : null),
     random: () => ({ id: 'd8fa8021bc64553a0c75', name: 'Anh Tre Say Hi' }),
-    list: () => [{ id: 'd8fa8021bc64553a0c75', name: 'Anh Tre Say Hi', tags: ['chào'] }],
+    list: () => [{ id: 'd8fa8021bc64553a0c75', name: 'Anh Tre Say Hi', tags: ['hello'] }],
     size: () => 1,
-    add: async ({ id, name }) => ({ item: { id, name: name ?? 'Mới' }, added: true }),
-    remove: async (value) => (String(value) === 'chào' ? { id: 'd8fa8021bc64553a0c75', name: 'Anh Tre Say Hi' } : null),
+    add: async ({ id, name }) => ({ item: { id, name: name ?? 'New' }, added: true }),
+    remove: async (value) => (String(value) === 'hello' ? { id: 'd8fa8021bc64553a0c75', name: 'Anh Tre Say Hi' } : null),
   };
   const zalo = {
     sendChatAction: async () => ({ ok: true }),
@@ -78,7 +78,7 @@ function ctx(d, overrides = {}) {
   };
 }
 
-test('/help trả danh sách lệnh', async () => {
+test('/help returns the list of commands', async () => {
   const d = deps();
   const commands = createCommands(d);
   const result = await commands.run({ name: 'help', args: '' }, ctx(d));
@@ -87,7 +87,7 @@ test('/help trả danh sách lệnh', async () => {
   assert.match(result.text, /@mention/);
 });
 
-test('/compact chạy compaction và báo kết quả', async () => {
+test('/compact runs compaction and reports the result', async () => {
   const d = deps();
   d.compaction = {
     async compactIfNeeded() {
@@ -96,29 +96,29 @@ test('/compact chạy compaction và báo kết quả', async () => {
   };
   const commands = createCommands(d);
   const result = await commands.run({ name: 'compact', args: '' }, ctx(d));
-  assert.match(result.text, /Đã nén context/);
-  assert.match(result.text, /tóm tắt/);
+  assert.match(result.text, /Compacted context/);
+  assert.match(result.text, /summary/);
 });
 
-test('/compact không cần nén thì báo rõ', async () => {
+test('/compact says clearly when nothing needs compaction', async () => {
   const d = deps();
   d.compaction = { async compactIfNeeded() { return null; } };
   const commands = createCommands(d);
   const result = await commands.run({ name: 'compact', args: '' }, ctx(d));
-  assert.match(result.text, /chưa cần nén/);
+  assert.match(result.text, /does not need compaction/);
 });
 
-test('/status có thông tin model và context', async () => {
+test('/status includes model and context info', async () => {
   const d = deps();
   const commands = createCommands(d);
   const result = await commands.run({ name: 'status', args: '' }, ctx(d));
   assert.match(result.text, /deepseek-flash/);
   assert.match(result.text, /DeepSeek V4\.1 Flash/);
-  assert.match(result.text, /không giới hạn/);
-  assert.match(result.text, /Context: 0 tin/);
+  assert.match(result.text, /unlimited/);
+  assert.match(result.text, /Context: 0 msg/);
 });
 
-test('/sticker liệt kê và chọn sticker theo cảm xúc', async () => {
+test('/sticker lists and picks a sticker by mood', async () => {
   const d = deps();
   const commands = createCommands(d);
 
@@ -126,59 +126,59 @@ test('/sticker liệt kê và chọn sticker theo cảm xúc', async () => {
   assert.match(list.text, /Sticker/);
   assert.match(list.text, /\/sticker/);
 
-  const picked = await commands.run({ name: 'sticker', args: 'chào' }, ctx(d));
+  const picked = await commands.run({ name: 'sticker', args: 'hello' }, ctx(d));
   assert.equal(picked.kind, 'sticker');
   assert.equal(picked.stickerId, 'd8fa8021bc64553a0c75');
 
-  const missing = await commands.run({ name: 'sticker', args: 'không có gì' }, ctx(d));
-  assert.match(missing.text, /Không có sticker/);
+  const missing = await commands.run({ name: 'sticker', args: 'nothing here' }, ctx(d));
+  assert.match(missing.text, /No sticker matches/);
 });
 
-test('/sticker add gửi thử rồi lưu, remove xoá', async () => {
+test('/sticker add test-sends then saves, remove deletes', async () => {
   const d = deps();
   const commands = createCommands(d);
   const context = ctx(d);
 
-  const added = await commands.run({ name: 'sticker', args: 'add 0e078a2fb66a5f34067b Chào hỏi' }, context);
-  assert.match(added.text, /Đã thêm/);
+  const added = await commands.run({ name: 'sticker', args: 'add 0e078a2fb66a5f34067b Hello there' }, context);
+  assert.match(added.text, /Added and test-sent/);
   assert.equal(d.zalo.lastSticker.stickerId, '0e078a2fb66a5f34067b');
 
-  const removed = await commands.run({ name: 'sticker', args: 'remove chào' }, context);
-  assert.match(removed.text, /Đã xoá/);
+  const removed = await commands.run({ name: 'sticker', args: 'remove hello' }, context);
+  assert.match(removed.text, /Removed the sticker/);
 });
 
-test('/model liệt kê và đổi model cho chat', async () => {
+test('/model lists and switches the model for the chat', async () => {
   const d = deps();
   const commands = createCommands(d);
   const context = ctx(d);
 
   const list = await commands.run({ name: 'model', args: '' }, context);
-  assert.match(list.text, /Model đang dùng/);
+  assert.match(list.text, /Current model/);
   assert.match(list.text, /\/model deepseek/);
 
   const switched = await commands.run({ name: 'model', args: 'nim' }, context);
-  assert.match(switched.text, /Đã chuyển sang/);
+  assert.match(switched.text, /Switched to/);
   assert.equal(context.record.meta.model, 'nim');
 
   const bad = await commands.run({ name: 'model', args: 'gpt-9' }, context);
-  assert.match(bad.text, /Không có model/);
+  assert.match(bad.text, /No model named/);
 });
 
-test('/model bị chặn nếu không phải admin', async () => {
+test('/model is blocked for non-admins', async () => {
   const d = deps({ config: { adminIds: ['admin-1'] } });
   const commands = createCommands(d);
   const result = await commands.run({ name: 'model', args: 'deepseek' }, ctx(d));
-  assert.match(result.text, /Chỉ admin/);
+  assert.match(result.text, /Only group admins/);
 });
 
-test('/reset bị chặn nếu không phải admin', async () => {
+test('/reset is blocked for non-admins', async () => {
   const d = deps({ config: { adminIds: ['admin-1'] } });
   const commands = createCommands(d);
   const result = await commands.run({ name: 'reset', args: '' }, ctx(d));
-  assert.match(result.text, /Chỉ admin/);
+  assert.match(result.text, /Only group admins/);
 });
 
-test('/reset cho phép admin và xoá context', async () => {
+test('/reset lets admins clear the context', async () => {
   const d = deps({ config: { adminIds: ['u1'] } });
   let resetCalled = false;
   d.store.reset = async () => {
@@ -187,24 +187,24 @@ test('/reset cho phép admin và xoá context', async () => {
   const commands = createCommands(d);
   const result = await commands.run({ name: 'reset', args: '' }, ctx(d));
   assert.equal(resetCalled, true);
-  assert.match(result.text, /Đã xoá ngữ cảnh/);
+  assert.match(result.text, /Cleared this chat's context/);
 });
 
-test('/search trả delegate', async () => {
+test('/search returns the delegate', async () => {
   const d = deps();
   const commands = createCommands(d);
-  const result = await commands.run({ name: 'search', args: 'giá vàng' }, ctx(d));
-  assert.deepEqual(result, { kind: 'search', query: 'giá vàng' });
+  const result = await commands.run({ name: 'search', args: 'gold price' }, ctx(d));
+  assert.deepEqual(result, { kind: 'search', query: 'gold price' });
 });
 
-test('/image trả delegate', async () => {
+test('/image returns the delegate', async () => {
   const d = deps();
   const commands = createCommands(d);
-  const result = await commands.run({ name: 'image', args: 'mèo con' }, ctx(d));
-  assert.deepEqual(result, { kind: 'image', query: 'mèo con' });
+  const result = await commands.run({ name: 'image', args: 'kitten' }, ctx(d));
+  assert.deepEqual(result, { kind: 'image', query: 'kitten' });
 });
 
-test('/think đổi chế độ reasoning', async () => {
+test('/think changes the reasoning mode', async () => {
   const d = deps();
   const commands = createCommands(d);
   const context = ctx(d);
@@ -214,36 +214,36 @@ test('/think đổi chế độ reasoning', async () => {
   assert.match(result.text, /off/);
 });
 
-test('/split off tắt chia tin cho chat, /split auto trả về cấu hình', async () => {
+test('/split off disables splitting for the chat, /split auto returns to the config', async () => {
   const d = deps();
   const commands = createCommands(d);
   const context = ctx(d);
 
   const off = await commands.run({ name: 'split', args: 'off' }, context);
-  assert.match(off.text, /Đã tắt chia tin/);
+  assert.match(off.text, /Split replies disabled/);
   assert.equal(context.record.meta.split, 'off');
 
   const shown = await commands.run({ name: 'split', args: '' }, context);
   assert.match(shown.text, /off/);
 
   const back = await commands.run({ name: 'split', args: 'auto' }, context);
-  assert.match(back.text, /theo cấu hình/);
+  assert.match(back.text, /split mode from the config/);
   assert.equal(context.record.meta.split, null);
 
   const bad = await commands.run({ name: 'split', args: 'xyz' }, context);
-  assert.match(bad.text, /không hợp lệ/);
+  assert.match(bad.text, /Invalid value/);
 });
 
-test('/split bị chặn nếu không phải admin', async () => {
+test('/split is blocked for non-admins', async () => {
   const d = deps({ config: { adminIds: ['admin-1'] } });
   const commands = createCommands(d);
   const result = await commands.run({ name: 'split', args: 'off' }, ctx(d));
-  assert.match(result.text, /Chỉ admin/);
+  assert.match(result.text, /Only group admins/);
 });
 
-test('lệnh lạ trả hướng dẫn', async () => {
+test('an unknown command returns guidance', async () => {
   const d = deps();
   const commands = createCommands(d);
   const result = await commands.run({ name: 'abc', args: '' }, ctx(d));
-  assert.match(result.text, /Không rõ lệnh/);
+  assert.match(result.text, /Unknown command/);
 });

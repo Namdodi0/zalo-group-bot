@@ -31,25 +31,25 @@ export function createCommands(deps) {
 
   function helpText() {
     const lines = [
-      '**Các lệnh của bot**',
-      '• `/help` — danh sách lệnh',
-      '• `/status` — trạng thái bot, context, độ trễ',
-      '• `/id` — id của chat hiện tại',
-      '• `/reset` — xoá ngữ cảnh của chat này (giữ model/tone); `/reset all` xoá cả cài đặt',
-      '• `/compact` — nén context ngay (admin)',
-      '• `/search <câu hỏi>` — bắt buộc tìm web cho câu hỏi',
-      '• `/image <từ khoá>` — tìm và gửi ảnh',
-      '• `/sticker [cảm xúc]` — gửi sticker; `/sticker add <id> [tên]` để thêm ID',
-      '• `/model` — xem/đổi model cho chat này',
-      '• `/tone` — xem/đổi giọng điệu (roast = cà khịa)',
-      '• `/think on|off|low|high` — bật/tắt suy luận cho chat này',
-      '• `/split on|off|auto` — tắt/bật chia trả lời thành nhiều tin',
-      '• `/ping` — kiểm tra kết nối tới Zalo',
+      '**Bot commands**',
+      '• `/help` — list of commands',
+      '• `/status` — bot status, context, latency',
+      '• `/id` — id of the current chat',
+      '• `/reset` — clear this chat\'s context (keeps model/tone); `/reset all` also clears the settings',
+      '• `/compact` — compact the context now (admin)',
+      '• `/search <question>` — force a web search for the question',
+      '• `/image <keywords>` — find and send an image',
+      '• `/sticker [mood]` — send a sticker; `/sticker add <id> [name]` to add an ID',
+      '• `/model` — view/change the model for this chat',
+      '• `/tone` — view/change the tone (roast = snarky)',
+      '• `/think on|off|low|high` — turn reasoning on/off for this chat',
+      '• `/split on|off|auto` — disable/enable splitting replies into multiple messages',
+      '• `/ping` — check the connection to Zalo',
       '',
       config.mode === 'polling'
-        ? 'Bot đang chạy chế độ polling (local).'
-        : 'Bot đang chạy chế độ webhook.',
-      'Trong group, hãy **@mention bot** hoặc **reply** vào tin của bot để bot trả lời.',
+        ? 'The bot is running in polling mode (local).'
+        : 'The bot is running in webhook mode.',
+      'In groups, **@mention the bot** or **reply** to one of its messages so it answers.',
     ];
     return lines.join('\n');
   }
@@ -61,41 +61,41 @@ export function createCommands(deps) {
     const replyLatency = snapshot.latency['agent.reply'];
     const count = (name) => snapshot.counters[name] ?? 0;
     const messages = record?.messages?.length ?? 0;
-    const thinking = record?.meta?.thinking ?? 'theo cấu hình';
+    const thinking = record?.meta?.thinking ?? 'per config';
     const current = models.resolve(record);
     const contextBudget =
       config.context.maxTokens > 0 || config.context.maxMessages > 0
         ? `${config.context.maxTokens > 0 ? `${config.context.maxTokens} token` : '∞ token'} / ${
-            config.context.maxMessages > 0 ? `${config.context.maxMessages} tin` : '∞ tin'
+            config.context.maxMessages > 0 ? `${config.context.maxMessages} msg` : '∞ msg'
           }`
-        : 'không giới hạn';
+        : 'unlimited';
     const replyLimit =
-      config.maxMessagesPerReply > 0 ? `${config.maxMessagesPerReply} tin` : 'không giới hạn';
+      config.maxMessagesPerReply > 0 ? `${config.maxMessagesPerReply} msg` : 'unlimited';
     const generationSpeed = Number(snapshot.gauges?.['llm.tokensPerSec'] ?? 0);
     const contextFiles = typeof store.count === 'function' ? await store.count() : null;
-    const contextStore = `• Lưu context: \`${config.context.dir}\`${
+    const contextStore = `• Context storage: \`${config.context.dir}\`${
       contextFiles === null ? '' : ` · ${contextFiles} file`
-    } · TTL ${config.context.ttlHours > 0 ? `${config.context.ttlHours}h` : 'không xoá'}`;
+    } · TTL ${config.context.ttlHours > 0 ? `${config.context.ttlHours}h` : 'never'}`;
     const estimated = createTokenMeter().messages(record?.messages ?? []);
     const window = Number(current.contextWindow ?? config.context.modelWindow ?? 0);
-    const pressure = `• Context pressure: ~${estimated} token${window > 0 ? ` / ${window} (${Math.round((estimated / window) * 100)}%)` : ' (chưa biết context window)'}`;
+    const pressure = `• Context pressure: ~${estimated} token${window > 0 ? ` / ${window} (${Math.round((estimated / window) * 100)}%)` : ' (context window unknown)'}`;
 
     /** @type {string[]} */
     const lines = [
-      '**Trạng thái bot**',
+      '**Bot status**',
       `• Model: \`${current.alias}\` — ${current.label} (\`${current.model}\`, ${current.provider})`,
-      `• Mode: ${config.mode} · Reasoning: ${config.ai.reasoning} (chat này: ${thinking})`,
-      `• max_tokens: ${config.ai.maxTokens ?? 'không giới hạn'}`,
+      `• Mode: ${config.mode} · Reasoning: ${config.ai.reasoning} (this chat: ${thinking})`,
+      `• max_tokens: ${config.ai.maxTokens ?? 'unlimited'}`,
       `• Uptime: ${formatDuration(snapshot.uptimeSec * 1000)} · bot v${config.version ?? '?'}`,
-      `• Context: ${messages} tin · ${record?.turns ?? 0} lượt · ngân sách: ${contextBudget} · tóm tắt: ${latestSummary(record) ? 'có' : 'chưa'}`,
+      `• Context: ${messages} msg · ${record?.turns ?? 0} turns · budget: ${contextBudget} · summary: ${latestSummary(record) ? 'yes' : 'no'}`,
       pressure,
       contextStore,
-      `• Giới hạn tin trả lời: ${replyLimit}`,
-      `• Độ trễ LLM: p50 ${nimLatency ? `${nimLatency.p50}ms` : 'n/a'} · p95 ${nimLatency ? `${nimLatency.p95}ms` : 'n/a'}${generationSpeed > 0 ? ` · ~${generationSpeed} tok/s` : ''}`,
-      `• Phản hồi: p50 ${replyLatency ? `${replyLatency.p50}ms` : 'n/a'} · p95 ${replyLatency ? `${replyLatency.p95}ms` : 'n/a'}`,
-      `• Tin nhận: ${count('messages.in')} · Đã trả lời: ${count('messages.replied')} · Lỗi: ${count('messages.error')}`,
-      `• Web search: ${config.search.enabled ? `${config.search.depth}/${config.search.maxResults} (auto: ${config.search.auto ? 'on' : 'off'})` : 'tắt'} · Ảnh: ${config.image.enabled ? 'bật' : 'tắt'}`,
-      `• Typing: ${config.typing ? 'bật' : 'tắt'} · Progressive: ${config.progressive}${record?.meta?.split ? ` (chat này: ${record.meta.split})` : ''}`,
+      `• Reply limit: ${replyLimit}`,
+      `• LLM latency: p50 ${nimLatency ? `${nimLatency.p50}ms` : 'n/a'} · p95 ${nimLatency ? `${nimLatency.p95}ms` : 'n/a'}${generationSpeed > 0 ? ` · ~${generationSpeed} tok/s` : ''}`,
+      `• Replies: p50 ${replyLatency ? `${replyLatency.p50}ms` : 'n/a'} · p95 ${replyLatency ? `${replyLatency.p95}ms` : 'n/a'}`,
+      `• Received: ${count('messages.in')} · Replied: ${count('messages.replied')} · Errors: ${count('messages.error')}`,
+      `• Web search: ${config.search.enabled ? `${config.search.depth}/${config.search.maxResults} (auto: ${config.search.auto ? 'on' : 'off'})` : 'off'} · Images: ${config.image.enabled ? 'on' : 'off'}`,
+      `• Typing: ${config.typing ? 'on' : 'off'} · Progressive: ${config.progressive}${record?.meta?.split ? ` (this chat: ${record.meta.split})` : ''}`,
       `• Chat: \`${ctx.chatId}\` (${ctx.chatType})`,
     ];
 
@@ -107,7 +107,7 @@ export function createCommands(deps) {
         if (!states.has(name)) states.set(name, { service: name, failures: 0, open: false });
       }
       const parts = [...states.values()].map(
-        (state) => `${state.service}: ${state.open ? `mở (${state.failures} lỗi)` : 'ok'}`,
+        (state) => `${state.service}: ${state.open ? `open (${state.failures} errors)` : 'ok'}`,
       );
       lines.push(`• Circuit: ${parts.join(' · ')}`);
     }
@@ -130,12 +130,12 @@ export function createCommands(deps) {
       case 'id':
         return {
           kind: 'text',
-          text: `Chat id: \`${ctx.chatId}\`\nLoại: ${ctx.chatType}\nNgười gửi: ${ctx.senderName} (\`${ctx.senderId}\`)`,
+          text: `Chat id: \`${ctx.chatId}\`\nType: ${ctx.chatType}\nSender: ${ctx.senderName} (\`${ctx.senderId}\`)`,
         };
 
       case 'reset': {
         if (!canManage(ctx)) {
-          return { kind: 'text', text: 'Chỉ admin của group mới được dùng /reset.' };
+          return { kind: 'text', text: 'Only group admins can use /reset.' };
         }
         const full = args.trim().toLowerCase() === 'all';
         const turns = ctx.record?.turns ?? 0;
@@ -144,8 +144,8 @@ export function createCommands(deps) {
         return {
           kind: 'text',
           text: full
-            ? `Đã xoá sạch ngữ cảnh và cài đặt của chat này (${turns} lượt). Chat như mới.`
-            : `Đã xoá ngữ cảnh của chat này (${turns} lượt), vẫn giữ cài đặt (model/tone/think). Dùng \`/reset all\` nếu muốn xoá cả cài đặt.`,
+            ? `Cleared all context and settings for this chat (${turns} turns). It is like new.`
+            : `Cleared this chat's context (${turns} turns) but kept the settings (model/tone/think). Use \`/reset all\` to clear the settings too.`,
         };
       }
 
@@ -153,40 +153,40 @@ export function createCommands(deps) {
         return { kind: 'text', text: await statusText(ctx, ctx.record) };
 
       case 'compact': {
-        if (!canManage(ctx)) return { kind: 'text', text: 'Chỉ admin của group mới được nén context.' };
-        if (!compaction) return { kind: 'text', text: 'Compaction chưa được cấu hình.' };
+        if (!canManage(ctx)) return { kind: 'text', text: 'Only group admins can compact the context.' };
+        if (!compaction) return { kind: 'text', text: 'Compaction is not configured.' };
         const meter = createTokenMeter();
         const before = meter.messages(ctx.record.messages);
         const result = await compaction.compactIfNeeded({ record: ctx.record, trigger: 'manual' });
         if (!result?.changed) {
-          return { kind: 'text', text: 'Context chưa cần nén (không còn range an toàn để nén).' };
+          return { kind: 'text', text: 'The context does not need compaction yet (no safe range left to compact).' };
         }
         store.touch?.(ctx.chatId);
         const after = meter.messages(ctx.record.messages);
         const parts = [];
-        if (result.summarized) parts.push('tóm tắt');
-        if (result.pruned) parts.push('rút gọn tool result');
-        return { kind: 'text', text: `Đã nén context (${parts.join(', ')}) — ~${before} → ~${after} token.` };
+        if (result.summarized) parts.push('summary');
+        if (result.pruned) parts.push('pruned tool results');
+        return { kind: 'text', text: `Compacted context (${parts.join(', ')}) — ~${before} → ~${after} tokens.` };
       }
 
       case 'search': {
-        if (!args) return { kind: 'text', text: 'Dùng: `/search <câu hỏi>`' };
-        if (!config.search.enabled) return { kind: 'text', text: 'Web search đang tắt trong cấu hình.' };
+        if (!args) return { kind: 'text', text: 'Usage: `/search <question>`' };
+        if (!config.search.enabled) return { kind: 'text', text: 'Web search is disabled in the config.' };
         return { kind: 'search', query: args };
       }
 
       case 'image': {
-        if (!args) return { kind: 'text', text: 'Dùng: `/image <từ khoá>`' };
-        if (!config.image.enabled) return { kind: 'text', text: 'Tính năng gửi ảnh đang tắt.' };
+        if (!args) return { kind: 'text', text: 'Usage: `/image <keywords>`' };
+        if (!config.image.enabled) return { kind: 'text', text: 'Image sending is disabled.' };
         return { kind: 'image', query: args };
       }
 
       case 'sticker': {
         if (!config.sticker.enabled) {
-          return { kind: 'text', text: 'Tính năng sticker đang tắt trong cấu hình.' };
+          return { kind: 'text', text: 'The sticker feature is disabled in the config.' };
         }
         if (!stickers) {
-          return { kind: 'text', text: 'Chưa có catalog sticker.' };
+          return { kind: 'text', text: 'No sticker catalog yet.' };
         }
         const raw = args.trim();
         const lower = raw.toLowerCase();
@@ -194,9 +194,9 @@ export function createCommands(deps) {
         const listText = () => {
           const items = stickers.list();
           return [
-            `**Sticker** — ${items.length} ID khả dụng`,
-            'Gửi: `/sticker <tên hoặc cảm xúc>`. Admin thêm ID bằng `/sticker add <id> [tên]`.',
-            'Chỉ nhận **sticker ID chính thức** (20 hex); ID gói trên stickers.zaloapp.com sẽ bị Zalo trả lỗi 425.',
+            `**Stickers** — ${items.length} IDs available`,
+            'Send: `/sticker <name or mood>`. Admins add IDs with `/sticker add <id> [name]`.',
+            'Only **official sticker IDs** are accepted (20 hex chars); pack IDs from stickers.zaloapp.com make Zalo return error 425.',
             '',
             ...items
               .slice(0, 20)
@@ -207,27 +207,27 @@ export function createCommands(deps) {
           ].join('\n');
         };
 
-        if (!raw || lower === 'list' || lower === 'danh sách') {
+        if (!raw || lower === 'list' || lower === 'danh s\u00E1ch') {
           return { kind: 'text', text: listText() };
         }
 
         if (lower === 'add' || lower.startsWith('add ')) {
           if (!canManage(ctx)) {
-            return { kind: 'text', text: 'Chỉ admin của group mới được thêm sticker.' };
+            return { kind: 'text', text: 'Only group admins can add stickers.' };
           }
           const rest = raw.slice(3).trim();
           const [idPart, ...nameParts] = rest.split(/\s+/);
-          if (!idPart) return { kind: 'text', text: 'Dùng: `/sticker add <id> [tên]`' };
+          if (!idPart) return { kind: 'text', text: 'Usage: `/sticker add <id> [name]`' };
           if (!/^[a-f0-9]{20}$/i.test(idPart)) {
-            return { kind: 'text', text: 'Sticker ID phải đúng 20 ký tự hex (ví dụ `0e078a2fb66a5f34067b`).' };
+            return { kind: 'text', text: 'The sticker ID must be exactly 20 hex characters (for example `0e078a2fb66a5f34067b`).' };
           }
           try {
-            // gửi thử để Zalo xác nhận ID hợp lệ
+            // send once so Zalo confirms the ID is valid
             await zalo.sendSticker(ctx.chatId, idPart);
           } catch (error) {
             return {
               kind: 'text',
-              text: `Zalo từ chối sticker \`${idPart}\`: ${String(/** @type {any} */ (error)?.message ?? error)}`,
+              text: `Zalo rejected the sticker \`${idPart}\`: ${String(/** @type {any} */ (error)?.message ?? error)}`,
             };
           }
           try {
@@ -235,46 +235,46 @@ export function createCommands(deps) {
             return {
               kind: 'text',
               text: added
-                ? `Đã thêm và gửi thử sticker **${item.name}** (\`${item.id}\`).`
-                : `Sticker **${item.name}** đã có sẵn — vừa gửi thử.`,
+                ? `Added and test-sent the sticker **${item.name}** (\`${item.id}\`).`
+                : `The sticker **${item.name}** was already there — just test-sent it.`,
             };
           } catch (error) {
-            return { kind: 'text', text: `Không lưu được sticker: ${String(/** @type {any} */ (error)?.message ?? error)}` };
+            return { kind: 'text', text: `Could not save the sticker: ${String(/** @type {any} */ (error)?.message ?? error)}` };
           }
         }
 
         if (lower === 'remove' || lower === 'xoa' || lower.startsWith('remove ') || lower.startsWith('xoa ')) {
           if (!canManage(ctx)) {
-            return { kind: 'text', text: 'Chỉ admin của group mới được xoá sticker.' };
+            return { kind: 'text', text: 'Only group admins can remove stickers.' };
           }
           const target = raw.replace(/^(remove|xoa)\s+/i, '').trim();
-          if (!target) return { kind: 'text', text: 'Dùng: `/sticker remove <id|tên>`' };
+          if (!target) return { kind: 'text', text: 'Usage: `/sticker remove <id|name>`' };
           const removed = await stickers.remove(target);
           return {
             kind: 'text',
             text: removed
-              ? `Đã xoá sticker **${removed.name}** (\`${removed.id}\`).`
-              : `Không tìm thấy sticker "${target}" trong danh sách tự thêm.`,
+              ? `Removed the sticker **${removed.name}** (\`${removed.id}\`).`
+              : `No sticker named "${target}" was found in the self-added list.`,
           };
         }
 
         const item = stickers.find(raw);
         if (!item) {
-          return { kind: 'text', text: `Không có sticker khớp "${raw}".\n\n${listText()}` };
+          return { kind: 'text', text: `No sticker matches "${raw}".\n\n${listText()}` };
         }
         return { kind: 'sticker', stickerId: item.id, name: item.name };
       }
 
       case 'model': {
         if (!canManage(ctx)) {
-          return { kind: 'text', text: 'Chỉ admin của group mới được đổi model.' };
+          return { kind: 'text', text: 'Only group admins can change the model.' };
         }
         const current = models.resolve(ctx.record);
         if (!args) {
           const lines = [
-            `**Model đang dùng:** \`${current.alias}\` — ${current.label} (\`${current.model}\`, ${current.provider})`,
+            `**Current model:** \`${current.alias}\` — ${current.label} (\`${current.model}\`, ${current.provider})`,
             '',
-            '**Đổi model cho chat này:**',
+            '**Change the model for this chat:**',
             ...models
               .list()
               .map((item) => `• \`/model ${item.alias}\` — ${item.label} (${item.provider}/${item.model})`),
@@ -285,7 +285,7 @@ export function createCommands(deps) {
         if (!picked) {
           return {
             kind: 'text',
-            text: `Không có model "${args}". Chọn: ${models.list().map((item) => item.alias).join(', ')}`,
+            text: `No model named "${args}". Choose: ${models.list().map((item) => item.alias).join(', ')}`,
           };
         }
         if (!ctx.record.meta) ctx.record.meta = { thinking: null };
@@ -295,17 +295,17 @@ export function createCommands(deps) {
         } catch (error) {
           logger?.debug('persist model failed', { error: String(error) });
         }
-        return { kind: 'text', text: `Đã chuyển sang **${picked.label}** (\`${picked.model}\`, ${picked.provider}).` };
+        return { kind: 'text', text: `Switched to **${picked.label}** (\`${picked.model}\`, ${picked.provider}).` };
       }
 
       case 'think': {
         if (!canManage(ctx)) {
-          return { kind: 'text', text: 'Chỉ admin của group mới được đổi chế độ suy luận.' };
+          return { kind: 'text', text: 'Only group admins can change the reasoning mode.' };
         }
         if (!ctx.record.meta) ctx.record.meta = { thinking: null };
         const value = args.toLowerCase();
         const persist = () => {
-          // lưu ngay lựa chọn reasoning cho chat này
+          // persist the reasoning choice for this chat right away
           try {
             store.touch?.(ctx.chatId);
           } catch (error) {
@@ -315,39 +315,39 @@ export function createCommands(deps) {
         if (!value) {
           return {
             kind: 'text',
-            text: `Chế độ suy luận hiện tại: ${ctx.record.meta.thinking ?? 'theo cấu hình'}. Dùng \`/think off|low|high\`.`,
+            text: `Current reasoning mode: ${ctx.record.meta.thinking ?? 'per config'}. Use \`/think off|low|high\`.`,
           };
         }
         if (['off', 'none'].includes(value)) {
           ctx.record.meta.thinking = 'off';
           persist();
-          return { kind: 'text', text: 'Đã tắt suy luận cho chat này (trả lời nhanh hơn).' };
+          return { kind: 'text', text: 'Reasoning is now off for this chat (faster replies).' };
         }
         if (['on', 'low'].includes(value)) {
           ctx.record.meta.thinking = 'low';
           persist();
-          return { kind: 'text', text: 'Đã bật suy luận mức thấp cho chat này.' };
+          return { kind: 'text', text: 'Reasoning is now on at low level for this chat.' };
         }
         if (['medium', 'high'].includes(value)) {
           ctx.record.meta.thinking = value;
           persist();
-          return { kind: 'text', text: `Đã đặt suy luận mức ${value} cho chat này.` };
+          return { kind: 'text', text: `Reasoning is now set to ${value} level for this chat.` };
         }
         if (['auto', 'default'].includes(value)) {
           ctx.record.meta.thinking = null;
           persist();
-          return { kind: 'text', text: 'Đã trở về chế độ suy luận theo cấu hình.' };
+          return { kind: 'text', text: 'Back to the reasoning mode from the config.' };
         }
-        return { kind: 'text', text: 'Giá trị không hợp lệ. Dùng `/think off|low|high|auto`.' };
+        return { kind: 'text', text: 'Invalid value. Use `/think off|low|high|auto`.' };
       }
 
       case 'split': {
         if (!canManage(ctx)) {
-          return { kind: 'text', text: 'Chỉ admin của group mới được đổi chế độ chia tin.' };
+          return { kind: 'text', text: 'Only group admins can change the split mode.' };
         }
         if (!ctx.record.meta) ctx.record.meta = { thinking: null };
         const value = args.toLowerCase();
-        const current = ctx.record.meta.split ?? 'theo cấu hình';
+        const current = ctx.record.meta.split ?? 'per config';
         const persist = () => {
           try {
             store.touch?.(ctx.chatId);
@@ -358,33 +358,33 @@ export function createCommands(deps) {
         if (!value) {
           return {
             kind: 'text',
-            text: `Chế độ chia tin của chat này: **${current}** (cấu hình chung: ${config.progressive}).\nDùng \`/split off\` để gộp trả lời vào một tin, \`/split on\` để tách sớm, \`/split auto\` để theo cấu hình.`,
+            text: `Split mode for this chat: **${current}** (global config: ${config.progressive}).\nUse \`/split off\` to merge replies into one message, \`/split on\` to split early, \`/split auto\` to follow the config.`,
           };
         }
-        if (['off', 'tat', 'tắt', 'gop', 'gộp'].includes(value)) {
+        if (['off', 'tat', 't\u1EAFt', 'gop', 'g\u1ED9p'].includes(value)) {
           ctx.record.meta.split = 'off';
           persist();
           return {
             kind: 'text',
-            text: 'Đã tắt chia tin: bot sẽ gộp trả lời vào một tin. Tin quá dài (trên 1900 ký tự) vẫn phải chia vì giới hạn của Zalo.',
+            text: 'Split replies disabled: the bot merges replies into one message. Messages that are too long (over 1900 characters) still have to be split because of Zalo\'s limit.',
           };
         }
-        if (['on', 'bat', 'bật'].includes(value)) {
+        if (['on', 'bat', 'b\u1EADt'].includes(value)) {
           ctx.record.meta.split = 'on';
           persist();
-          return { kind: 'text', text: 'Đã bật chia tin sớm: bot gửi phần đầu ngay khi có câu hoàn chỉnh để đỡ chờ.' };
+          return { kind: 'text', text: 'Split replies enabled: the bot sends the first part as soon as a complete sentence is ready, so you wait less.' };
         }
         if (['auto', 'default', 'reset'].includes(value)) {
           ctx.record.meta.split = null;
           persist();
-          return { kind: 'text', text: `Đã trở về chế độ chia tin theo cấu hình (${config.progressive}).` };
+          return { kind: 'text', text: `Back to the split mode from the config (${config.progressive}).` };
         }
-        return { kind: 'text', text: 'Giá trị không hợp lệ. Dùng `/split off|on|auto`.' };
+        return { kind: 'text', text: 'Invalid value. Use `/split off|on|auto`.' };
       }
 
       case 'tone': {
         if (!canManage(ctx)) {
-          return { kind: 'text', text: 'Chỉ admin của group mới được đổi giọng điệu.' };
+          return { kind: 'text', text: 'Only group admins can change the tone.' };
         }
         if (!ctx.record.meta) ctx.record.meta = { thinking: null };
         const value = args.toLowerCase();
@@ -395,8 +395,8 @@ export function createCommands(deps) {
             logger?.debug('persist tone failed', { error: String(error) });
           }
         };
-        // Lịch sử chat neo rất mạnh vào giọng cũ. Chèn một tin của bot làm "mốc chuyển giọng"
-        // để lượt kế tiếp không bắt chước giọng cũ.
+        // The chat history is anchored very strongly to the old tone. Insert a bot message as a
+        // "tone switch marker" so the next turn does not imitate the old tone.
         const markTone = (text) => {
           try {
             if (Array.isArray(ctx.record.messages)) {
@@ -414,48 +414,48 @@ export function createCommands(deps) {
         if (!value) {
           return {
             kind: 'text',
-            text: `Giọng điệu chat này: **${ctx.record.meta.tone ?? config.tone}** (cấu hình chung: ${config.tone}).\nDùng \`/tone roast\` (cà khịa, chửi yêu) hoặc \`/tone friendly\` (lịch sự); \`/tone default\` để theo cấu hình.`,
+            text: `Tone for this chat: **${ctx.record.meta.tone ?? config.tone}** (global config: ${config.tone}).\nUse \`/tone roast\` (snarky, playful roasting) or \`/tone friendly\` (polite); \`/tone default\` to follow the config.`,
           };
         }
-        if (['max', 'extreme', 'cuc', 'cực', 'sieu-nang', 'siêu nặng', 'gắt', 'gat'].includes(value)) {
+        if (['max', 'extreme', 'cuc', 'c\u1EF1c', 'sieu-nang', 'si\u00EAu n\u1EB7ng', 'g\u1EAFt', 'gat'].includes(value)) {
           ctx.record.meta.tone = 'roast-extreme';
-          markTone('Ok, từ giờ mình chửi không nương tay.');
-          return { kind: 'text', text: 'Đã bật giọng **cực gắt** cho chat này 🔥🔥 (vẫn không: gia đình, phân biệt đối xử, đe doạ).' };
+          markTone('Ok, from now on I roast without holding back.');
+          return { kind: 'text', text: '**Extreme roast** tone enabled for this chat 🔥🔥 (still no: family, discrimination, threats).' };
         }
-        if (['hard', 'roast-hard', 'nang', 'nặng', 'manh', 'mạnh'].includes(value)) {
+        if (['hard', 'roast-hard', 'nang', 'n\u1EB7ng', 'manh', 'm\u1EA1nh'].includes(value)) {
           ctx.record.meta.tone = 'roast-hard';
-          markTone('Ok, từ giờ mình chửi thẳng, nặng lời.');
-          return { kind: 'text', text: 'Đã bật giọng **cà khịa nặng** cho chat này 🔥 (vẫn không: phân biệt đối xử, xúc phạm gia đình, đe doạ).' };
+          markTone('Ok, from now on I roast bluntly and harshly.');
+          return { kind: 'text', text: '**Hard roast** tone enabled for this chat 🔥 (still no: discrimination, insults about family, threats).' };
         }
-        if (['roast', 'cay', 'cakhia', 'cà khịa', 'thô', 'tho'].includes(value)) {
+        if (['roast', 'cay', 'cakhia', 'c\u00E0 kh\u1ECBa', 'th\u00F4', 'tho'].includes(value)) {
           ctx.record.meta.tone = 'roast';
-          markTone('Ok, từ giờ mình cà khịa lại nhé 😈');
-          return { kind: 'text', text: 'Đã bật giọng **cà khịa** cho chat này 😈 (vẫn có giới hạn: không phân biệt đối xử, không xúc phạm gia đình).' };
+          markTone('Ok, from now on I tease you again 😈');
+          return { kind: 'text', text: '**Roast** tone enabled for this chat 😈 (still limited: no discrimination, no insults about family).' };
         }
-        if (['friendly', 'normal', 'thuong', 'thường', 'lịch sự', 'lich su'].includes(value)) {
+        if (['friendly', 'normal', 'thuong', 'th\u01B0\u1EDDng', 'l\u1ECBch s\u1EF1', 'lich su'].includes(value)) {
           ctx.record.meta.tone = 'friendly';
-          markTone('Ok, từ giờ mình nói chuyện lịch sự, bỏ hẳn giọng cà khịa.');
-          return { kind: 'text', text: 'Đã trở về giọng lịch sự cho chat này.' };
+          markTone('Ok, from now on I talk politely and drop the roasting completely.');
+          return { kind: 'text', text: 'Back to the polite tone for this chat.' };
         }
         if (['default', 'auto', 'reset'].includes(value)) {
           ctx.record.meta.tone = null;
-          markTone('Ok, từ giờ mình dùng giọng theo cấu hình của bot.');
-          return { kind: 'text', text: `Đã trở về giọng theo cấu hình (${config.tone}).` };
+          markTone('Ok, from now on I use the tone from the bot config.');
+          return { kind: 'text', text: `Back to the tone from the config (${config.tone}).` };
         }
-        return { kind: 'text', text: 'Giá trị không hợp lệ. Dùng `/tone roast` hoặc `/tone friendly`.' };
+        return { kind: 'text', text: 'Invalid value. Use `/tone roast` or `/tone friendly`.' };
       }
 
       case 'ping': {
         try {
           const ms = await zalo.ping();
-          return { kind: 'text', text: `Pong! Zalo API trả lời trong ${ms}ms.` };
+          return { kind: 'text', text: `Pong! The Zalo API replied in ${ms}ms.` };
         } catch (error) {
-          return { kind: 'text', text: `Ping lỗi: ${String(/** @type {any} */ (error)?.message ?? error)}` };
+          return { kind: 'text', text: `Ping failed: ${String(/** @type {any} */ (error)?.message ?? error)}` };
         }
       }
 
       default:
-        return { kind: 'text', text: `Không rõ lệnh \`/${name}\`. Gõ /help để xem danh sách.` };
+        return { kind: 'text', text: `Unknown command \`/${name}\`. Type /help to see the list.` };
     }
   }
 

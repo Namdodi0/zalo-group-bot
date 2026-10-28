@@ -21,9 +21,9 @@ import { VERSION } from './version.js';
 import { startPolling } from './zalo/polling.js';
 import { createWebhookServer } from './zalo/webhook.js';
 
-// Nạp .env ngay trong code, TRƯỚC khi đọc config: panel host / pm2 / systemd hay
-// chạy `node index.js` mà bỏ cờ --env-file-if-exists. Biến có sẵn trong môi trường
-// vẫn được ưu tiên (xem src/env.js).
+// Load .env inside the code, BEFORE reading the config: host panels / pm2 / systemd often
+// run `node index.js` and drop the --env-file-if-exists flag. Variables already in the
+// environment still take precedence (see src/env.js).
 const envReport = loadEnvFiles();
 
 async function main() {
@@ -58,7 +58,7 @@ async function main() {
     icon: '🚀',
   });
   if (config.logThinking !== false && config.ai.reasoning === 'none') {
-    logger.info('AI_REASONING=none nên model không trả thinking — đặt low|medium|high|auto để thấy dòng 🧠');
+    logger.info('AI_REASONING=none means the model returns no thinking — set low|medium|high|auto to see the 🧠 line');
   }
 
   const httpClient = createHttp({ logger, metrics });
@@ -77,7 +77,7 @@ async function main() {
     icon: '📚',
   });
   if (isEphemeralDataDir(config.dataDir)) {
-    logger.warn('DATA_DIR nằm trong thư mục tạm — context sẽ mất khi restart/redeploy', {
+    logger.warn('DATA_DIR is inside a temp directory — context will be lost on restart/redeploy', {
       dir: config.dataDir,
     });
   }
@@ -173,7 +173,7 @@ async function main() {
   const primary = models.resolve(null);
   const fallback = models.resolve({ meta: { model: models.fallbackAlias } });
 
-  // Xác thực bot token + lấy display name để strip mention.
+  // Verify the bot token + fetch the display name so mentions can be stripped.
   try {
     const me = await zalo.getMe();
     zalo.displayName = String(me.display_name ?? me.account_name ?? '');
@@ -183,10 +183,10 @@ async function main() {
         [
           `🤖 ${zalo.displayName || 'Bot Zalo'}  ·  v${config.version}  ·  Zalo group chatbot`,
           `🧠 ${primary.label} · ${primary.provider}/${primary.model}  (fallback: ${fallback.alias})`,
-          `⚙️  ${config.mode} · reasoning=${config.ai.reasoning} · max_tokens=${config.ai.maxTokens ?? 'không giới hạn'}`,
+          `⚙️  ${config.mode} · reasoning=${config.ai.reasoning} · max_tokens=${config.ai.maxTokens ?? 'unlimited'}`,
           `🔎 search=${config.search.enabled ? `${config.search.depth}/${config.search.maxResults}${config.search.auto ? '' : ' (auto off)'}` : 'off'} · typing=${config.typing ? 'on' : 'off'} · progressive=${config.progressive} · sticker=${config.sticker.enabled ? 'on' : 'off'}`,
-          `📚 context ${config.context.maxTokens > 0 || config.context.maxMessages > 0 ? `${config.context.maxTokens > 0 ? config.context.maxTokens : '∞'} tokens / ${config.context.maxMessages > 0 ? config.context.maxMessages : '∞'} tin` : 'không giới hạn'} · trả lời ${config.maxMessagesPerReply > 0 ? `≤ ${config.maxMessagesPerReply} tin` : 'không giới hạn tin'}`,
-          `💾 data ${config.dataDir} · ${contextFiles} file context · TTL ${config.context.ttlHours > 0 ? `${config.context.ttlHours}h` : 'không xoá'}`,        ],
+          `📚 context ${config.context.maxTokens > 0 || config.context.maxMessages > 0 ? `${config.context.maxTokens > 0 ? config.context.maxTokens : '∞'} tokens / ${config.context.maxMessages > 0 ? config.context.maxMessages : '∞'} msgs` : 'unlimited'} · replies ${config.maxMessagesPerReply > 0 ? `≤ ${config.maxMessagesPerReply} msgs` : 'unlimited msgs'}`,
+          `💾 data ${config.dataDir} · ${contextFiles} file context · TTL ${config.context.ttlHours > 0 ? `${config.context.ttlHours}h` : 'never'}`,        ],
         { color: config.logColor },
       );
     }
@@ -197,24 +197,24 @@ async function main() {
       icon: '🤖',
     });
     if (config.zalo.botId && me.id && String(me.id) !== config.zalo.botId) {
-      logger.warn('ZALO_BOT_ID không khớp với token', { expected: config.zalo.botId, actual: me.id });
+      logger.warn('ZALO_BOT_ID does not match the token', { expected: config.zalo.botId, actual: me.id });
     }
     if (me.can_join_groups !== true) {
-      logger.warn('bot này chưa được phép tham gia group (can_join_groups=false)');
+      logger.warn('this bot is not allowed to join groups (can_join_groups=false)');
     }
     if (!config.allowedChatIds.length) {
-      logger.warn('ALLOWED_CHAT_IDS đang trống: bot sẽ trả lời mọi chat. Nên điền chat.id của group.');
+      logger.warn('ALLOWED_CHAT_IDS is empty: the bot will reply to every chat. You should set the group chat.id.');
     }
   } catch (error) {
-    logger.error('không gọi được getMe — kiểm tra ZALO_BOT_TOKEN', { error });
+    logger.error('could not call getMe — check ZALO_BOT_TOKEN', { error });
     process.exitCode = 1;
     return;
   }
 
   if (!config.dryRun) {
-    // Warmup TUẦN TỰ, mỗi cặp provider+model đúng 1 lần.
-    // Trước đây 2 alias (nim, nim-light) cùng provider nên warmup chạy SONG SONG 2 request
-    // tới NIM → request thứ hai bị xếp hàng rồi timeout 20s, log ra "warmup failed" oan.
+    // Warm up SEQUENTIALLY, exactly once per provider+model pair.
+    // Previously the two aliases (nim, nim-light) shared a provider, so warmup fired 2 requests
+    // to NIM IN PARALLEL → the second one queued up and timed out after 20s, logging a bogus "warmup failed".
     const warmTargets = [];
     for (const alias of new Set([models.defaultAlias, models.fallbackAlias])) {
       const target = models.find(alias);
@@ -223,7 +223,7 @@ async function main() {
       if (warmTargets.some((item) => item.key === key)) continue;
       warmTargets.push({ key, alias, target });
     }
-    // Không await: warmup chạy nền, bot vào polling ngay.
+    // No await: warmup runs in the background, the bot enters polling right away.
     (async () => {
       for (const item of warmTargets) {
         const result = await models.warmup(item.alias);
@@ -237,8 +237,8 @@ async function main() {
         if (result.ok) {
           logger.info('llm warmup done', fields);
         } else {
-          // Warmup là tối ưu, thất bại không ảnh hưởng gì → để mức debug cho đỡ hoang mang.
-          logger.debug('llm warmup bỏ qua (không ảnh hưởng)', { ...fields, error: result.error });
+          // Warmup is only an optimization, a failure changes nothing → keep it at debug level to avoid confusion.
+          logger.debug('llm warmup skipped (no impact)', { ...fields, error: result.error });
         }
       }
     })();
@@ -256,7 +256,7 @@ async function main() {
     shutdownPromise = (async () => {
       logger.info('shutting down', { reason, icon: '👋' });
       controller.abort();
-      // Đóng nguồn nhận tin (webhook/ops) trước, để queue không tăng thêm trong lúc chờ.
+      // Close the message sources (webhook/ops) first so the queue stops growing while waiting.
       for (const cleanup of cleanups.reverse()) {
         try {
           await cleanup();
@@ -264,11 +264,11 @@ async function main() {
           logger.warn('cleanup failed', { error });
         }
       }
-      // Chờ tin đang xử lý gửi xong trước khi đóng: nếu không, redeploy có thể
-      // cắt ngang câu trả lời và lưu context thiếu lượt assistant.
+      // Wait for in-flight messages to finish sending before closing: otherwise a redeploy could
+      // cut a reply short and save a context missing the assistant turn.
       try {
         const left = await agent.drain(10_000);
-        if (left > 0) logger.warn('shutdown: vẫn còn tin chưa xử lý xong', { pending: left, icon: '⏳' });
+        if (left > 0) logger.warn('shutdown: messages still unfinished', { pending: left, icon: '⏳' });
       } catch (error) {
         logger.warn('drain on shutdown failed', { error });
       }
@@ -339,7 +339,7 @@ async function main() {
       res.end();
     });
     opsServer.on('error', (error) => {
-      logger.error('ops server lỗi (kiểm tra OPS_PORT)', { error });
+      logger.error('ops server error (check OPS_PORT)', { error });
     });
     opsServer.listen(config.opsPort, '127.0.0.1');
     cleanups.push(() => new Promise((resolve) => opsServer?.close(() => resolve(undefined))));
@@ -367,7 +367,7 @@ async function main() {
         logger.error('setWebhook failed', { error });
       }
     } else {
-      logger.info('chưa đăng ký webhook — đặt WEBHOOK_PUBLIC_URL hoặc gọi setWebhook thủ công', {
+      logger.info('webhook not registered yet — set WEBHOOK_PUBLIC_URL or call setWebhook manually', {
         localUrl: url,
         icon: '🔗',
       });
@@ -380,9 +380,9 @@ async function main() {
     return;
   }
 
-  // Polling (mặc định)
+  // Polling (default)
   if (config.once) {
-    logger.info('chạy --once: nhận tối đa 1 lượt update rồi thoát');
+    logger.info('running --once: handle at most 1 update then exit');
   }
   await startPolling({
     zalo,
@@ -409,10 +409,10 @@ async function main() {
 
 main().catch((error) => {
   const message = error instanceof Error ? error.message : String(error);
-  // Có version cả ở nhánh lỗi: log panel chỉ hiện vài dòng cuối, phải biết đang chạy bản nào.
+  // Include the version on the error path too: panel logs only show the last few lines, so you must know which build is running.
   process.stderr.write(`fatal [v${VERSION}]: ${message}\n`);
   if (error instanceof ConfigError) {
-    // Chỉ ra đã tìm .env ở đâu, file nào thiếu → khỏi đoán mò trên panel.
+    // Show where .env was looked for and which files are missing → no more guessing on the panel.
     const hints = describeEnvHints();
     if (hints.length) process.stderr.write(`hint:\n${hints.join('\n')}\n`);
   }

@@ -6,10 +6,10 @@ export function formatSearchResults(results, options = {}) {
   const maxChars = options.maxChars ?? 500;
   const maxItems = options.maxItems ?? 4;
   const items = (Array.isArray(results) ? results : []).slice(0, maxItems);
-  if (!items.length) return '(không có kết quả)';
+  if (!items.length) return '(no results)';
   return items
     .map((item, index) => {
-      const title = String(item?.title ?? '').trim() || '(không tiêu đề)';
+      const title = String(item?.title ?? '').trim() || '(no title)';
       const url = String(item?.url ?? '').trim();
       const content = String(item?.content ?? '').replace(/\s+/g, ' ').trim().slice(0, maxChars);
       return `${index + 1}. ${title}\n   ${url}\n   ${content}`;
@@ -59,7 +59,7 @@ export function createTavilyClient(options) {
    */
   async function search(query, opts = {}) {
     const clean = String(query ?? '').trim().slice(0, 300);
-    if (!clean) throw new Error('query rỗng');
+    if (!clean) throw new Error('empty query');
 
     const depth = opts.searchDepth ?? 'fast';
     /** @type {Record<string, unknown>} */
@@ -72,7 +72,7 @@ export function createTavilyClient(options) {
       include_answer: Boolean(opts.includeAnswer),
       topic: opts.topic ?? 'general',
     };
-    // Tavily: `country` chỉ hỗ trợ với basic/advanced, không hỗ trợ fast/ultra-fast.
+    // Tavily: `country` is only supported with basic/advanced, not fast/ultra-fast.
     const country = opts.country ?? 'vietnam';
     if (country && !['fast', 'ultra-fast'].includes(String(depth))) {
       body.country = country;

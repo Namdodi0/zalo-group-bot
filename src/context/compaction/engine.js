@@ -2,9 +2,9 @@ import { summarizeRange } from './summarizer.js';
 import { pruneToolResults } from './tool-result-pruner.js';
 
 /**
- * Pipeline compaction: prune tool-result → summarize range.
- * Trigger: 'pressure' (áp lực token), 'overflow' (provider báo context đầy),
- * 'manual' (/compact), 'dropped' (assembler đã phải bỏ message).
+ * Compaction pipeline: prune tool-result → summarize range.
+ * Trigger: 'pressure' (token pressure), 'overflow' (provider reports a full context),
+ * 'manual' (/compact), 'dropped' (the assembler had to drop messages).
  * @param {{config: any, logger?: import('../../logger.js').Logger, metrics?: any, summarize: (messages: any[], deadline?: number) => Promise<string>}} options
  */
 export function createCompactionEngine(options) {

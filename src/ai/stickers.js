@@ -1,20 +1,20 @@
 /**
- * Sticker Zalo.
+ * Zalo stickers.
  *
- * LƯU Ý: `sendSticker` chỉ nhận **sticker ID chính thức** (20 hex), KHÔNG nhận
- * ID gói/category trên stickers.zaloapp.com (các ID đó trả 425 "The sticker is invalid").
- * Vì vậy:
- *  - Built-in: ID mẫu trong tài liệu Zalo Bot (đã kiểm chứng gửi được).
- *  - Extra: khai báo qua STICKER_IDS (id hoặc id:tên).
- *  - Admin thêm ID hợp lệ bằng `/sticker add <id> [tên]` (bot gửi thử rồi lưu).
- *  - Khi có người gửi sticker cho bot, mặc định bot gửi lại chính sticker đó.
+ * NOTE: `sendSticker` only accepts **official sticker IDs** (20 hex chars), NOT
+ * pack/category IDs from stickers.zaloapp.com (those return 425 "The sticker is invalid").
+ * Therefore:
+ *  - Built-in: sample IDs from the Zalo Bot docs (verified to send successfully).
+ *  - Extra: declared via STICKER_IDS (id or id:name).
+ *  - Admin adds valid IDs via `/sticker add <id> [name]` (the bot test-sends, then saves).
+ *  - When someone sends a sticker to the bot, by default the bot sends that same sticker back.
  */
 
 export const BUILTIN_STICKERS = [
   {
     id: '0e078a2fb66a5f34067b',
-    name: 'Sticker Zalo mẫu',
-    tags: ['chào', 'hi', 'hello', 'vui', 'mẫu'],
+    name: 'Sample Zalo sticker',
+    tags: ['greeting', 'hi', 'hello', 'happy', 'sample'],
   },
 ];
 
@@ -23,18 +23,18 @@ export function isValidStickerId(value) {
   return /^[a-f0-9]{20}$/i.test(String(value ?? '').trim());
 }
 
-/** Bỏ dấu + lowercase để tìm "meo" khớp "Mèo", "chao" khớp "chào". */
+/** Strip diacritics and lowercase so unaccented queries still match accented names. */
 export function normalizeText(value) {
   return String(value ?? '')
     .normalize('NFD')
     .replace(/\p{Diacritic}/gu, '')
-    .replace(/đ/giu, 'd')
+    .replace(/\u0111/giu, 'd')
     .toLowerCase()
     .trim();
 }
 
 /**
- * Parse STICKER_IDS: "id1,id2:tên hai,id3" → [{id, name}]
+ * Parse STICKER_IDS: "id1,id2:name two,id3" → [{id, name}]
  * @param {unknown} raw
  */
 export function parseStickerIds(raw) {
@@ -93,7 +93,7 @@ export function createStickerStore(options = {}) {
       rebuild();
       if (custom.length) logger?.info('sticker catalog loaded', { file, count: custom.length });
     } catch {
-      logger?.debug('chưa có sticker catalog riêng', { file });
+      logger?.debug('no custom sticker catalog yet', { file });
     }
     return items;
   }
@@ -108,7 +108,7 @@ export function createStickerStore(options = {}) {
       null,
       2,
     );
-    // Ghi atomic: crash giữa lúc ghi không được làm hỏng catalog.
+    // Write atomically: a crash mid-write must not corrupt the catalog.
     const tmp = `${file}.${process.pid}.${Date.now()}.tmp`;
     await fsp.writeFile(tmp, payload, 'utf8');
     await fsp.rename(tmp, file);
@@ -116,7 +116,7 @@ export function createStickerStore(options = {}) {
 
   /** @param {{id: string, name?: string, tags?: string[]}} input */
   async function add(input) {
-    if (!isValidStickerId(input.id)) throw new Error('Sticker ID phải là 20 ký tự hex');
+    if (!isValidStickerId(input.id)) throw new Error('Sticker ID must be 20 hex characters');
     const id = String(input.id).toLowerCase();
     const existing = items.find((item) => item.id === id);
     if (existing) return { item: existing, added: false };

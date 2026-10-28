@@ -26,7 +26,7 @@ function runtime(config, stickerStore) {
 
 const fakeStickers = {
   find: (query) =>
-    String(query).includes('chào')
+    String(query).includes('greeting')
       ? { id: 'd8fa8021bc64553a0c75', name: 'Anh Tre Say Hi' }
       : null,
   random: () => ({ id: 'd8fa8021bc64553a0c75', name: 'Anh Tre Say Hi' }),
@@ -41,7 +41,7 @@ function baseConfig(overrides = {}) {
   };
 }
 
-test('SEARCH_AUTO=off: model không có tool web_search', () => {
+test('SEARCH_AUTO=off: the model has no web_search tool', () => {
   const { tools } = runtime(
     baseConfig({ search: { enabled: true, auto: false, depth: 'fast', maxResults: 4, country: 'vietnam' } }),
     fakeStickers,
@@ -51,37 +51,37 @@ test('SEARCH_AUTO=off: model không có tool web_search', () => {
   assert.equal(names.includes('send_image'), true);
 });
 
-test('web_search vẫn chạy được khi auto=off (dùng cho /search)', async () => {
+test('web_search still works when auto=off (used by /search)', async () => {
   const { tools } = runtime(
     baseConfig({ search: { enabled: true, auto: false, depth: 'fast', maxResults: 4, country: 'vietnam' } }),
     fakeStickers,
   );
-  const result = await tools.run('web_search', { query: 'giá vàng' }, { chatId: 'c1' });
+  const result = await tools.run('web_search', { query: 'gold price' }, { chatId: 'c1' });
   assert.equal(result.ok, true);
 });
 
-test('tool ảnh dừng khi hết deadline', async () => {
+test('the image tool stops once the deadline passes', async () => {
   const { tools } = runtime(baseConfig(), fakeStickers);
-  const result = await tools.run('send_image', { query: 'mèo' }, { chatId: 'c1', deadline: Date.now() - 1 });
+  const result = await tools.run('send_image', { query: 'cat' }, { chatId: 'c1', deadline: Date.now() - 1 });
   assert.equal(result.ok, false);
-  assert.match(result.text, /Hết thời gian/);
+  assert.match(result.text, /Ran out of time/);
 });
 
-test('send_sticker có trong definitions khi bật, gửi đúng id', async () => {
+test('send_sticker is in definitions when enabled and sends the right id', async () => {
   const { tools, zalo } = runtime(baseConfig(), fakeStickers);
   const names = tools.definitions().map((tool) => tool.function.name);
   assert.equal(names.includes('send_sticker'), true);
 
-  const result = await tools.run('send_sticker', { emotion: 'chào' }, { chatId: 'c1' });
+  const result = await tools.run('send_sticker', { emotion: 'greeting' }, { chatId: 'c1' });
   assert.equal(result.ok, true);
   assert.match(result.text, /Anh Tre Say Hi/);
   assert.equal(zalo.lastSticker.stickerId, 'd8fa8021bc64553a0c75');
 });
 
-test('send_sticker tắt thì không có tool và không gửi', async () => {
+test('when send_sticker is off there is no tool and nothing is sent', async () => {
   const { tools, zalo } = runtime(baseConfig({ sticker: { enabled: false } }), fakeStickers);
   assert.equal(tools.definitions().some((tool) => tool.function.name === 'send_sticker'), false);
-  const result = await tools.run('send_sticker', { emotion: 'chào' }, { chatId: 'c1' });
+  const result = await tools.run('send_sticker', { emotion: 'greeting' }, { chatId: 'c1' });
   assert.equal(result.ok, false);
   assert.equal(zalo.lastSticker, null);
 });

@@ -14,11 +14,11 @@ export function normalizeWhitespace(text) {
 }
 
 /**
- * Bỏ "@Bot deepseek" khỏi nội dung tin nhắn group.
- * Tên bot không kèm '@' chỉ bị bỏ khi đứng đầu câu và theo sau là ':' hoặc ','
- * (tránh cắt mất câu như "Bot deepseek là gì?").
+ * Remove "@Bot deepseek" from group message content.
+ * A bot name without '@' is only removed at the start of a sentence followed by ':'
+ * or ',' (avoiding clipping sentences like "What is Bot deepseek?").
  * @param {string} text
- * @param {string[]} names tên bot (display_name / cấu hình)
+ * @param {string[]} names bot names (display_name / config)
  */
 export function stripMention(text, names = []) {
   let out = normalizeWhitespace(text);
@@ -53,7 +53,7 @@ function hardSplit(value, limit) {
 }
 
 /**
- * Đảm bảo code fence không bị mở ở cuối chunk này mà không đóng.
+ * Make sure a code fence is not opened in this chunk and left unclosed.
  * @param {string[]} chunks
  */
 function balanceFences(chunks) {
@@ -134,7 +134,7 @@ function splitLongBlock(block, limit) {
 }
 
 /**
- * Cắt văn bản thành nhiều tin Zalo (mỗi tin <= limit ký tự).
+ * Split text into multiple Zalo messages (each message <= limit characters).
  * @param {string} text
  * @param {{limit?: number, maxChunks?: number}} [options]
  * @returns {{chunks: string[], truncated: boolean}}
@@ -186,7 +186,7 @@ export function chunkText(text, options = {}) {
 }
 
 /**
- * Zalo chỉ hỗ trợ một tập markdown nhỏ: chuyển link/ảnh/bảng về dạng văn bản.
+ * Zalo only supports a small markdown subset: convert links/images/tables to plain text.
  * @param {string} text
  */
 export function sanitizeZaloMarkdown(text) {
@@ -237,7 +237,7 @@ export function formatDuration(ms) {
 }
 
 /**
- * Chuẩn bị text cuối cùng để gửi Zalo.
+ * Prepare the final text to send to Zalo.
  * @param {string} text
  * @param {{parseMode?: 'markdown'|'none'}} [options]
  */
@@ -248,7 +248,7 @@ export function prepareOutgoing(text, options = {}) {
 }
 
 /**
- * Định dạng ngày giờ theo giờ Việt Nam cho system prompt.
+ * Format the date and time in Vietnam time for the system prompt.
  * @param {Date} [date]
  */
 export function formatNow(date = new Date()) {

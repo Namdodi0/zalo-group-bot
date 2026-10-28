@@ -16,7 +16,7 @@ function safeEqual(a, b) {
 }
 
 /**
- * Webhook server bằng node:http (không phụ thuộc framework).
+ * Webhook server built on node:http (no framework dependency).
  * @param {{config: any, logger: import('../logger.js').Logger, metrics?: any, onEvent: (event: import('./events.js').BotEvent) => void}} options
  */
 export function createWebhookServer(options) {
@@ -34,7 +34,7 @@ export function createWebhookServer(options) {
    * @param {http.ServerResponse} res
    */
   async function handle(req, res) {
-    // Bỏ query string khi so khớp path
+    // Strip the query string when matching the path
     const pathname = (req.url ?? '/').split('?')[0];
 
     if (req.method === 'GET' && pathname === '/healthz') {
@@ -81,7 +81,7 @@ export function createWebhookServer(options) {
       if (aborted) return;
       metrics?.inc('webhook.received');
 
-      // Parse trước khi trả 200: body hỏng thì Zalo phải biết để retry.
+      // Parse before returning 200: on a broken body Zalo must know so it can retry.
       let payload = null;
       try {
         payload = JSON.parse(Buffer.concat(chunks).toString('utf8'));

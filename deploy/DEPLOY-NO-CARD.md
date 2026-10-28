@@ -1,116 +1,116 @@
-# Deploy KHÔNG CẦN THẺ
+# Deploy WITHOUT A CARD
 
-Hai đường khả thi khi không có thẻ tín dụng. Chọn một.
+Two viable routes when you have no credit card. Pick one.
 
-- **A. Máy ở nhà** — miễn phí nhất, ổn định nhất, cần một máy chạy 24/7.
-- **B. Wispbyte free** — không cần thẻ, không cần máy, nhưng panel-only và có rủi ro tự stop.
+- **A. A machine at home** — cheapest, most stable, needs a machine that runs 24/7.
+- **B. Wispbyte free** — no card, no machine, but panel-only and at risk of stopping itself.
 
-Bot dùng **polling**: không cần IP công khai, không cần domain, không cần mở port.
+The bot uses **polling**: no public IP, no domain, no open port needed.
 
 ---
 
-## Chuẩn bị chung (1 lần)
+## Shared setup (once)
 
-### 1. Lấy key, KHÔNG commit
+### 1. Get the keys, do NOT commit them
 
-`.env` trong repo đã được làm trống `DEEPSEEK_API_KEY`. Điền key ở máy đích:
+`DEEPSEEK_API_KEY` in the repo's `.env` has been blanked out. Fill in the keys on the target machine:
 
 ```ini
-ZALO_BOT_TOKEN=<token Zalo Bot Creator>
-DEEPSEEK_API_KEY=<key mới tạo>
-NIM_API_KEY=<key NIM, dự phòng>
-TAVILY_API_KEY=<key Tavily>
-ALLOWED_CHAT_IDS=<chat.id của group>     # nên điền, tránh bot trả lời mọi chat
+ZALO_BOT_TOKEN=<token from Zalo Bot Creator>
+DEEPSEEK_API_KEY=<newly created key>
+NIM_API_KEY=<NIM key, fallback>
+TAVILY_API_KEY=<Tavily key>
+ALLOWED_CHAT_IDS=<the group's chat.id>     # fill this in, otherwise the bot answers every chat
 ```
 
-### 2. Tạo bản đóng gói sạch
+### 2. Create a clean package
 
 ```powershell
 cd zalo-group-bot
-npm run pack        # -> dist/zalo-group-bot-*.zip  (~108 KB, không có .env/data)
+npm run pack        # -> dist/zalo-group-bot-*.zip  (~108 KB, no .env/data)
 ```
 
 ---
 
-## A. Máy ở nhà (Windows)
+## A. A machine at home (Windows)
 
-Phù hợp: PC cũ, laptop, mini PC. Yêu cầu: Node ≥ 22.9, máy bật 24/7.
+Good fit: an old PC, a laptop, a mini PC. Requirements: Node ≥ 22.9, the machine on 24/7.
 
-### A1. Chuẩn bị máy
+### A1. Prepare the machine
 
 ```powershell
-# cài Node 22 nếu chưa có: https://nodejs.org  (chọn LTS)
-node -v            # phải >= v22.9
+# install Node 22 if you don't have it: https://nodejs.org  (pick LTS)
+node -v            # must be >= v22.9
 
-# giải nén gói
+# unzip the package
 Expand-Archive .\dist\zalo-group-bot-*.zip -DestinationPath C:\zalo
 cd C:\zalo
 
-# tạo .env từ mẫu rồi điền key
+# create .env from the template, then fill in the keys
 copy .env.example .env
 notepad .env
 
-# chạy thử trước khi cài tự động
+# test-run it before installing automatic startup
 node --env-file-if-exists=.env src/index.js
 ```
 
-Thấy log `zalo bot ready` là được. `Ctrl+C`.
+If you see the `zalo bot ready` log, you're good. `Ctrl+C`.
 
-### A2. Cài tự chạy + tự restart
+### A2. Install auto-start + auto-restart
 
 ```powershell
 cd C:\zalo
 powershell -ExecutionPolicy Bypass -File .\deploy\install-windows.ps1 -Root C:\zalo
 ```
 
-Script tạo 2 Scheduled Task:
+The script creates 2 Scheduled Tasks:
 
-| Task | Việc |
+| Task | What it does |
 |---|---|
-| `ZaloBot` | chạy khi đăng nhập Windows, **tự restart nếu crash**, không giới hạn thời gian |
-| `ZaloBotBackup` | nén `data/` mỗi ngày, giữ 14 bản |
+| `ZaloBot` | runs at Windows logon, **restarts itself if it crashes**, no time limit |
+| `ZaloBotBackup` | zips `data/` every day, keeps 14 copies |
 
-Xem trước không cài: thêm `-DryRun`.
+Preview without installing: add `-DryRun`.
 
-### A3. Chống máy ngủ / Windows Update restart
+### A3. Stop the machine from sleeping / Windows Update restarts
 
 ```powershell
 powercfg /change standby-timeout-ac 0
 powercfg /change hibernate-timeout-ac 0
-# Task Scheduler đã bật "Start when available" nên sau reboot bot tự lên lại khi có người đăng nhập
+# Task Scheduler already has "Start when available" enabled, so after a reboot the bot comes back up when someone logs in
 ```
 
-Nếu máy không ai đăng nhập sau reboot: mở Task Scheduler → task `ZaloBot` → Properties →
-chọn **Run whether user is logged on or not** (cần nhập mật khẩu Windows một lần).
+If nobody logs in after a reboot: open Task Scheduler → the `ZaloBot` task → Properties →
+select **Run whether user is logged on or not** (you need to type the Windows password once).
 
-### A4. Kiểm tra
+### A4. Check
 
 ```powershell
 Get-ScheduledTask -TaskName ZaloBot | Get-ScheduledTaskInfo
-Get-Content C:\zalo\data\logs\bot.log -Tail 20    # nếu bạn bật log ra file
+Get-Content C:\zalo\data\logs\bot.log -Tail 20    # if you enabled logging to file
 ```
 
-Rồi vào group gõ `@Bot /status`.
+Then go into the group and type `@Bot /status`.
 
 ---
 
-## B. Wispbyte free (không cần thẻ, không cần máy)
+## B. Wispbyte free (no card, no machine)
 
-Free: 512 MB RAM / 1 GB disk / 1 deployment, không cần thẻ, không gia hạn tay.
-Fair Use: **1 tài khoản free / người**.
+Free: 512 MB RAM / 1 GB disk / 1 deployment, no card needed, no manual renewal.
+Fair Use: **1 free account / person**.
 
-### B1. Tạo deployment
+### B1. Create the deployment
 
-1. Đăng ký tại https://wispbyte.com (không cần thẻ)
-2. **Create server** → chọn **Node.js** → image Node 22
-3. Upload `dist/zalo-group-bot-*.zip` (hoặc trỏ GitHub repo nếu bạn đẩy code lên)
-4. Giải nén trong file manager của panel, để `src/index.js` ở thư mục gốc server
+1. Sign up at https://wispbyte.com (no card needed)
+2. **Create server** → pick **Node.js** → the Node 22 image
+3. Upload `dist/zalo-group-bot-*.zip` (or point it at the GitHub repo if you push your code up)
+4. Unzip it in the panel's file manager, leaving `src/index.js` at the server's root directory
 
-Nếu lấy code từ GitHub (repo public): dán `https://github.com/Namdodi0/zalo-group-bot.git`, branch `main`, bật `AUTO_UPDATE=1` để mỗi lần restart tự `git pull`.
+If you take the code from GitHub (public repo): paste `https://github.com/Namdodi0/zalo-group-bot.git`, branch `main`, turn on `AUTO_UPDATE=1` so every restart does a `git pull`.
 
-### B2. Nhập biến môi trường
+### B2. Enter the environment variables
 
-Trong panel → **Environment / Startup**, thêm đúng các biến sau (không cần file `.env`):
+In the panel → **Environment / Startup**, add exactly these variables (no `.env` file needed):
 
 ```
 ZALO_BOT_TOKEN=...
@@ -130,44 +130,44 @@ LOG_FORMAT=json
 node index.js
 ```
 
-Bot **tự nạp `.env`** ở thư mục đang chạy (xem `src/env.js`), nên:
+The bot **loads `.env` itself** from the working directory (see `src/env.js`), so:
 
-- Có file `.env` → dùng được ngay, không cần cờ `--env-file-if-exists`.
-- Không có `.env` → biến lấy từ panel vẫn chạy (biến trong môi trường luôn thắng file).
-- Nếu vẫn báo `fatal: Thiếu ZALO_BOT_TOKEN`, phần `hint:` ngay dưới sẽ in **thư mục làm việc** và **đã tìm `.env` ở đâu** → tạo file đúng chỗ đó.
+- If there is an `.env` file → it works right away, no `--env-file-if-exists` flag needed.
+- If there is no `.env` → variables from the panel still work (environment variables always win over the file).
+- If you still see a `fatal:` error about a missing `ZALO_BOT_TOKEN`, the `hint:` right below prints the **working directory** and **where it looked for `.env`** → create the file in that exact place.
 
-Lưu ý khi tạo `.env` bằng File Manager của panel:
+Notes when creating `.env` with the panel's File Manager:
 
-- Lưu dạng **UTF-8, không BOM** (Notepad: *Save as → Encoding: UTF-8*; nếu có BOM bot vẫn đọc được, nhưng đừng dùng UTF-16).
-- Không cần dấu nháy quanh giá trị; comment bằng `#` ở đầu dòng.
-- Trên Wispbyte, đặt `DATA_DIR` tới volume persistent (thường `/home/container/data`), **không dùng `/tmp`** — `/tmp` mất mỗi lần restart. Đường dẫn tương đối (`./data`) giờ được tính từ gốc repo, nhưng đường dẫn tuyệt đối vẫn an toàn hơn.
-- Trước khi **Reinstall/Redeploy**: tải `data/contexts/*.json` về máy. Reinstall xoá sạch `data/`; `git pull` + restart thì không.
-- `CONTEXT_TTL_HOURS=0` = giữ context mãi; mặc định 72 giờ, khuyến nghị 720 giờ (30 ngày).
+- Save as **UTF-8, no BOM** (Notepad: *Save as → Encoding: UTF-8*; the bot still reads a BOM, but don't use UTF-16).
+- No quotes needed around values; comments start with `#` at the beginning of the line.
+- On Wispbyte, point `DATA_DIR` at a persistent volume (usually `/home/container/data`), **don't use `/tmp`** — `/tmp` disappears on every restart. Relative paths (`./data`) are now resolved from the repo root, but an absolute path is still safer.
+- Before a **Reinstall/Redeploy**: download `data/contexts/*.json` to your machine. A reinstall wipes `data/`; a `git pull` + restart does not.
+- `CONTEXT_TTL_HOURS=0` = keep the context forever; the default is 72 hours, 720 hours (30 days) is recommended.
 
-### B4. Kiểm tra
+### B4. Check
 
-- Console phải hiện `zalo bot ready`
-- Vào group gõ `@Bot /status`
-- Cắm **uptime monitor** (UptimeRobot/Better Stack free, 5 phút/lần) trỏ vào
-  `https://<server>.wispbyte.cloud` nếu panel cấp domain, hoặc dùng ping Zalo API.
+- The console must show `zalo bot ready`
+- Go into the group and type `@Bot /status`
+- Hook up an **uptime monitor** (UptimeRobot/Better Stack free, every 5 minutes) pointed at
+  `https://<server>.wispbyte.cloud` if the panel gives you a domain, or use a ping to the Zalo API.
 
-### B5. Rủi ro phải biết
+### B5. Risks you must know
 
-| Rủi ro | Cách giảm |
+| Risk | How to reduce it |
 |---|---|
-| Tự stop / 504 / maintenance | Uptime monitor + bật auto-restart trong panel |
-| `data/` mất khi **Reinstall/Redeploy** | Đặt `DATA_DIR` tuyệt đối ngoài thư mục code; tải `data/contexts/*.json` về máy trước khi reinstall |
-| Bot "mất trí nhớ" sau restart | Xem log `context store { dir, files, ttl }` lúc khởi động và `/status`; `files=0` → sai `DATA_DIR` hoặc TTL quá ngắn |
-| 512 MB RAM | Đã đủ cho bot (bỏ Grok proxy rồi, ~100–150 MB) |
-| Token trên hạ tầng họ | Dùng key riêng cho bot, thu hồi được khi cần |
+| Stops itself / 504 / maintenance | Uptime monitor + enable auto-restart in the panel |
+| `data/` lost on **Reinstall/Redeploy** | Set `DATA_DIR` to an absolute path outside the code directory; download `data/contexts/*.json` before reinstalling |
+| Bot "loses its memory" after a restart | Check the `context store { dir, files, ttl }` log at startup and `/status`; `files=0` → wrong `DATA_DIR` or a TTL that is too short |
+| 512 MB RAM | Already enough for the bot (the Grok proxy is gone, ~100–150 MB) |
+| Token on their infrastructure | Use a dedicated key for the bot, one you can revoke when needed |
 
 ---
 
-## Checklist trước khi coi là "đã deploy"
+## Checklist before calling it "deployed"
 
-- [ ] `node --test` chạy trên máy đích: **141/141 pass**
-- [ ] `ALLOWED_CHAT_IDS` đã điền (nếu không bot trả lời mọi chat)
-- [ ] `/status` trong group trả về được
-- [ ] Đã cắm uptime monitor
-- [ ] Backup `data/` chạy (Task Scheduler hoặc tải tay)
-- [ ] Key DeepSeek **mới**, không dùng lại key cũ đã lộ
+- [ ] `node --test` runs on the target machine: **141/141 pass**
+- [ ] `ALLOWED_CHAT_IDS` is filled in (otherwise the bot answers every chat)
+- [ ] `/status` in the group responds
+- [ ] An uptime monitor is hooked up
+- [ ] A backup of `data/` runs (Task Scheduler or manual download)
+- [ ] A **new** DeepSeek key, not the old leaked one

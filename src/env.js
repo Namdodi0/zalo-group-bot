@@ -1,18 +1,18 @@
-// Nạp file .env ngay trong code — không phụ thuộc cờ `--env-file-if-exists` của Node.
+// Load the .env file inside the code — no dependency on Node's `--env-file-if-exists` flag.
 //
-// Vì sao cần: nhiều hosting panel (Pterodactyl/Wispbyte, pm2, systemd, Docker CMD…)
-// tự chạy `node index.js` hoặc `node src/index.js` mà bỏ mất cờ env-file, nên bot
-// chết với "fatal: Thiếu ZALO_BOT_TOKEN" dù .env nằm ngay đó. Nạp trong code thì
-// chạy kiểu gì cũng có config.
+// Why: many hosting panels (Pterodactyl/Wispbyte, pm2, systemd, Docker CMD…)
+// run `node index.js` or `node src/index.js` themselves and drop the env-file flag, so the bot
+// dies with "fatal: Missing ZALO_BOT_TOKEN" even though .env is right there. Loading inside the
+// code means the config is there however it is started.
 //
-// Nguyên tắc: biến đã có sẵn trong process.env (panel/CI/terminal) LUÔN thắng file,
-// trừ khi nó rỗng — panel hay khai báo sẵn `ZALO_BOT_TOKEN=` rỗng, khi đó .env được
-// quyền điền vào.
+// Rule: variables already present in process.env (panel/CI/terminal) ALWAYS win over the file,
+// unless they are empty — panels often pre-declare an empty `ZALO_BOT_TOKEN=`, in which case
+// .env is allowed to fill it in.
 
 import fs from 'node:fs';
 import path from 'node:path';
 
-/** File được thử nạp, theo thứ tự ưu tiên (file trước thắng). */
+/** Files tried, in priority order (the first one wins). */
 export const DEFAULT_ENV_FILES = ['.env', '.env.local'];
 
 const KEY_RE = /^[A-Za-z_][A-Za-z0-9_]*$/;
@@ -24,7 +24,7 @@ const KEY_RE = /^[A-Za-z_][A-Za-z0-9_]*$/;
 let lastReport = null;
 
 /**
- * Bỏ quote + comment cuối dòng của 1 giá trị.
+ * Strip quotes and trailing comments from a value.
  * @param {string} raw
  */
 function normalizeValue(raw) {
@@ -35,21 +35,21 @@ function normalizeValue(raw) {
     if ((first === '"' || first === "'") && last === first) {
       const inner = value.slice(1, -1);
       if (first === "'") return inner;
-      // Chỉ giải escape cơ bản cho "..."; \n trong .env hay dùng cho PEM.
+      // Only decode basic escapes for "..."; \n in .env is commonly used for PEM.
       return inner.replace(/\\([nrt"\\])/g, (_, ch) =>
         ch === 'n' ? '\n' : ch === 'r' ? '\r' : ch === 't' ? '\t' : ch,
       );
     }
   }
-  // Giá trị không quote: "abc  # chú thích" → "abc"
+  // Unquoted value: "abc  # note" → "abc"
   const hash = value.search(/\s#/);
   if (hash >= 0) return value.slice(0, hash).trim();
   return value;
 }
 
 /**
- * Parse nội dung file .env thành danh sách [key, value] theo thứ tự xuất hiện.
- * Chấp nhận: BOM, CRLF, dòng trắng, comment, tiền tố `export `, quote đơn/kép.
+ * Parse the contents of a .env file into a list of [key, value] in order of appearance.
+ * Accepts: BOM, CRLF, blank lines, comments, the `export ` prefix, single/double quotes.
  * @param {string} text
  * @returns {Array<[string, string]>}
  */
@@ -71,7 +71,7 @@ export function parseEnvFile(text) {
 }
 
 /**
- * Đọc danh sách file .env và gán vào env (không ghi đè biến đã có giá trị).
+ * Read the .env files and assign them into env (never overwrite a variable that already has a value).
  * @param {{ cwd?: string, env?: Record<string, string|undefined>, files?: string[] }} [options]
  * @returns {EnvReport}
  */
@@ -95,7 +95,7 @@ export function loadEnvFiles(options = {}) {
       report.found = true;
     } catch (error) {
       const code = /** @type {any} */ (error)?.code;
-      // Không có file là bình thường (panel cấp biến qua UI). Lỗi khác thì giữ lại để báo.
+      // A missing file is normal (the panel provides variables via its UI). Keep other errors to report them.
       if (code !== 'ENOENT' && code !== 'EISDIR') {
         report.error = `${code ?? 'ERROR'}: ${/** @type {any} */ (error)?.message ?? error}`;
       }
@@ -127,38 +127,38 @@ export function loadEnvFiles(options = {}) {
   return report;
 }
 
-/** @returns {EnvReport|null} Report của lần loadEnvFiles() gần nhất. */
+/** @returns {EnvReport|null} Report from the most recent loadEnvFiles() call. */
 export function getEnvReport() {
   return lastReport;
 }
 
 /**
- * Gợi ý sửa lỗi cấu hình: đã tìm .env ở đâu, thấy gì.
- * Dùng khi loadConfig() ném ConfigError để người dùng biết sửa ở đâu.
+ * Config troubleshooting hints: where .env was searched for and what was found.
+ * Used when loadConfig() throws ConfigError so the user knows where to fix things.
  * @returns {string[]}
  */
 export function describeEnvHints() {
   const report = lastReport;
   if (!report) return [];
   /** @type {string[]} */
-  const lines = [`  thư mục làm việc: ${report.cwd}`];
+  const lines = [`  working directory: ${report.cwd}`];
   for (const item of report.files) {
     if (item.found) {
-      lines.push(`  ${item.name}: có (${item.applied.length} biến nạp từ file)`);
+      lines.push(`  ${item.name}: found (${item.applied.length} variables loaded from file)`);
     } else if (item.error) {
-      lines.push(`  ${item.name}: LỖI ĐỌC — ${item.error}`);
+      lines.push(`  ${item.name}: READ ERROR — ${item.error}`);
     } else {
-      lines.push(`  ${item.name}: không tìm thấy`);
+      lines.push(`  ${item.name}: not found`);
     }
   }
   if (report.missing.length) {
     lines.push(
-      `  → tạo file .env ngay trong thư mục trên (copy từ .env.example), ` +
-        'hoặc khai báo biến môi trường trực tiếp trong panel host',
+      `  → create a .env file in that directory (copy it from .env.example), ` +
+        'or declare the environment variables directly in the host panel',
     );
   }
   if (report.applied.length) {
-    lines.push(`  biến nạp từ file: ${report.applied.join(', ')}`);
+    lines.push(`  variables loaded from file: ${report.applied.join(', ')}`);
   }
   return lines;
 }

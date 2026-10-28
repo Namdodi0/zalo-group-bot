@@ -3,7 +3,7 @@ import { createSilentLogger } from '../src/logger.js';
 export const silentLogger = createSilentLogger();
 
 /**
- * Cấu hình tối thiểu dùng cho test agent/commands.
+ * Minimal config used by the agent/commands tests.
  * @param {Record<string, any>} [overrides]
  */
 export function makeConfig(overrides = {}) {

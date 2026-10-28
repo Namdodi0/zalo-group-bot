@@ -1,9 +1,9 @@
 /**
- * Chạy thử agent với NIM/Tavily thật nhưng KHÔNG gửi tin lên Zalo.
- * Dùng để kiểm tra pipeline, tool calling, context trước khi thả bot vào group.
+ * Run the agent against real NIM/Tavily but send NO messages to Zalo.
+ * Use it to check the pipeline, tool calling and context before letting the bot loose in a group.
  *
- *   npm run simulate -- "chào bot, mình tên Nam"
- *   npm run simulate -- "giá vàng hôm nay thế nào?"
+ *   npm run simulate -- "hi bot, my name is Nam"
+ *   npm run simulate -- "what is the gold price today?"
  *   npm run simulate -- "/status"
  */
 import path from 'node:path';
@@ -27,14 +27,14 @@ import { createTavilyClient } from '../src/search/tavily.js';
 
 const text = process.argv.slice(2).join(' ').trim();
 if (!text) {
-  console.error('Dùng: npm run simulate -- "câu hỏi"');
+  console.error('Usage: npm run simulate -- "question"');
   process.exit(1);
 }
 
 loadEnvFiles();
 
 const config = loadConfig({
-  // Không parse flags từ nội dung tin nhắn (tránh "--help" trong câu hỏi).
+  // Do not parse flags from the message content (avoid "--help" inside a question).
   argv: [],
   env: { ...process.env, LOG_LEVEL: process.env.LOG_LEVEL ?? 'warn' },
 });
@@ -164,5 +164,5 @@ await agent.handle({
 });
 
 const record = await store.get('simulate-chat');
-console.log(`\n--- ${Date.now() - started}ms · ${record.turns} lượt · ${record.messages.length} tin trong context ---`);
+console.log(`\n--- ${Date.now() - started}ms · ${record.turns} turns · ${record.messages.length} messages in context ---`);
 await store.flush();

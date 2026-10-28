@@ -1,8 +1,8 @@
 import { LLM_ERROR, LlmError, asLlmError } from './errors.js';
 
 /**
- * Service gọi model trung lập provider: registry adapter + dispatch + chuẩn hoá lỗi.
- * Một lần gọi kết thúc đúng một trong hai trạng thái: resolve kết quả hoặc throw LlmError.
+ * Provider-neutral model service: adapter registry + dispatch + error normalization.
+ * A call ends in exactly one of two states: it resolves a result or throws LlmError.
  * @param {{adapters?: any[], logger?: import('../../logger.js').Logger, metrics?: any}} [options]
  */
 export function createLlmService(options = {}) {
@@ -13,9 +13,9 @@ export function createLlmService(options = {}) {
   /** @param {any} adapter */
   function register(adapter) {
     const id = adapter?.id;
-    if (!id) throw new LlmError(LLM_ERROR.NO_ADAPTER, 'Adapter thiếu id/provider');
+    if (!id) throw new LlmError(LLM_ERROR.NO_ADAPTER, 'Adapter is missing id/provider');
     if (routes.has(id)) {
-      throw new LlmError(LLM_ERROR.PROVIDER_ERROR, `Adapter trùng route: ${id}`, { provider: id });
+      throw new LlmError(LLM_ERROR.PROVIDER_ERROR, `Duplicate adapter route: ${id}`, { provider: id });
     }
     routes.set(id, adapter);
     return () => {
@@ -41,16 +41,16 @@ export function createLlmService(options = {}) {
     const provider = String(request?.provider ?? '');
     const adapter = routes.get(provider);
     if (!adapter) {
-      throw new LlmError(LLM_ERROR.NO_ADAPTER, `Chưa có adapter cho provider "${provider}"`, { provider });
+      throw new LlmError(LLM_ERROR.NO_ADAPTER, `No adapter for provider "${provider}"`, { provider });
     }
     const model = request?.model ?? adapter.model;
     if (adapter.credentialed === false) {
-      throw new LlmError(LLM_ERROR.MISSING_CREDENTIAL, `Thiếu API key cho provider "${provider}"`, {
+      throw new LlmError(LLM_ERROR.MISSING_CREDENTIAL, `Missing API key for provider "${provider}"`, {
         provider,
         model,
       });
     }
-    // Request bất biến với service: adapter không được sửa lựa chọn provider/model.
+    // The request is immutable to the service: adapters must not change the provider/model choice.
     const frozen = Object.freeze({ ...request, provider, model });
 
     try {
@@ -82,7 +82,7 @@ export function createLlmService(options = {}) {
   async function warmup(provider, warmupOptions = {}) {
     const adapter = routes.get(String(provider ?? ''));
     if (!adapter) {
-      return { ok: false, ms: 0, model: '', error: `Chưa có adapter cho provider "${provider}"` };
+      return { ok: false, ms: 0, model: '', error: `No adapter for provider "${provider}"` };
     }
     return adapter.warmup(warmupOptions);
   }

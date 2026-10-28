@@ -74,7 +74,7 @@ function redactValue(value, secrets) {
 }
 
 /**
- * Độ rộng hiển thị (emoji tính 2 cột) để căn banner.
+ * Display width (emoji count as 2 columns) for aligning the banner.
  * @param {string} text
  */
 export function visualWidth(text) {
@@ -132,7 +132,7 @@ function formatValue(value) {
     if (json === undefined) return String(value);
     return json.length > MAX_VALUE_CHARS ? `${json.slice(0, MAX_VALUE_CHARS - 1)}…` : json;
   } catch {
-    return '[không đọc được]';
+    return '[unreadable]';
   }
 }
 
@@ -145,7 +145,7 @@ function formatFields(fields, color) {
     ([key, value]) => key !== 'icon' && value !== undefined && value !== '',
   );
   if (!entries.length) return '';
-  // đưa `error` xuống cuối cho dễ đọc
+  // push `error` to the end for readability
   entries.sort(([a], [b]) => (a === 'error' ? 1 : b === 'error' ? -1 : 0));
   return entries
     .map(([key, value]) => {
@@ -202,7 +202,7 @@ export function createLogger(options = {}) {
   const stdout = options.stdout ?? process.stdout;
   const stderr = options.stderr ?? process.stderr;
   const now = options.now ?? (() => new Date());
-  /** Gắn version vào MỌI dòng log: panel tự git pull nên phải biết đang chạy bản nào. */
+  /** Attach the version to EVERY log line: the panel git-pulls on its own, so we must know which build is running. */
   const rootBindings = /** @type {Record<string, unknown>} */ (options.version ? { version: options.version } : {});
 
   /**
@@ -228,7 +228,7 @@ export function createLogger(options = {}) {
         }
         stream.write(`${formatPretty({ date, level: method, msg: safeMsg, fields: safeFields }, colorEnabled(stream, colorMode))}\n`);
       } catch {
-        // không để lỗi logging làm chết bot
+        // never let a logging failure kill the bot
       }
     };
 
@@ -245,7 +245,7 @@ export function createLogger(options = {}) {
 }
 
 /**
- * Khung banner khởi động (chỉ dùng cho chế độ pretty).
+ * Startup banner frame (used only in pretty mode).
  * @param {NodeJS.WritableStream} stream
  * @param {string[]} lines
  * @param {{color?: 'auto'|'always'|'never'}} [options]
@@ -270,7 +270,7 @@ export function printBanner(stream, lines, options = {}) {
   }
 }
 
-/** Logger câm, dùng cho test. */
+/** Silent logger, used for tests. */
 export function createSilentLogger() {
   const noop = () => {};
   /** @type {Logger} */
