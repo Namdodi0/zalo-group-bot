@@ -24,7 +24,6 @@ $include = @(
   'scripts',
   'test',
   'test-utils',
-  'deploy',
   'package.json',
   'package-lock.json',
   'tsconfig.json',
