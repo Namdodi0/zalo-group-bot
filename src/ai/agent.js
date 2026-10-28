@@ -535,7 +535,9 @@ export function createAgent(deps) {
               temperature: config.ai.temperature,
               maxTokens: config.ai.maxTokens,
               stream: false,
-              timeoutMs: Math.max(1500, Math.min(config.ai.timeoutMs, left - 300)),
+              // Last chance: use all the time left instead of capping at the provider timeout,
+              // otherwise a slow model cannot answer even when seconds are still available.
+              timeoutMs: Math.max(1500, left - 300),
               signal: AbortSignal.timeout(left),
             });
             llmMs += Date.now() - fallbackStarted;
