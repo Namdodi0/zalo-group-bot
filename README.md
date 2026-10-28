@@ -1,6 +1,6 @@
 # zalo-group-bot
 
-Bot chat cho **một nhóm Zalo**, dùng **DeepSeek** (`deepseek-flash` = V4.1 Flash, mặc định) và **NVIDIA NIM** (`nvidia/nemotron-3.5-super-vl-120b-a12b`, dự phòng), cùng **Tavily** cho web search. Viết bằng Node.js thuần (ESM), **không có dependency runtime** — chỉ dùng `fetch`, `node:http`, `node:test` có sẵn.
+Bot chat cho **một nhóm Zalo**, **NVIDIA NIM** (`nvidia/nemotron-3.5-super-vl-120b-a12b`), cùng **Tavily** cho web search. Viết bằng Node.js thuần (ESM), **không có dependency runtime** — chỉ dùng `fetch`, `node:http`, `node:test` có sẵn.
 
 ## Tính năng
 
