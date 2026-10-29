@@ -140,6 +140,26 @@ test('AI_REASONING takes precedence over NIM_REASONING (legacy compatibility)', 
   assert.equal(config.ai.reasoning, 'low');
 });
 
+test('per-provider temperatures accept 0 and reject invalid values', async () => {
+  const dir = await tempDir();
+  const config = loadConfig({
+    argv: [],
+    env: baseEnv({ NIM_TEMPERATURE: '0', DEEPSEEK_TEMPERATURE: '1.4' }),
+    cwd: dir,
+  });
+  assert.equal(config.nim.temperature, 0);
+  assert.equal(config.deepseek.temperature, 1.4);
+
+  assert.throws(
+    () => loadConfig({ argv: [], env: baseEnv({ NIM_TEMPERATURE: 'hot' }), cwd: dir }),
+    /NIM_TEMPERATURE/,
+  );
+  assert.throws(
+    () => loadConfig({ argv: [], env: baseEnv({ DEEPSEEK_TEMPERATURE: '3' }), cwd: dir }),
+    /DEEPSEEK_TEMPERATURE/,
+  );
+});
+
 test('a missing DEEPSEEK_API_KEY throws when deepseek is used', async () => {
   const dir = await tempDir();
   assert.throws(

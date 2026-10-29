@@ -1,6 +1,6 @@
 # zalo-group-bot
 
-A chat bot for **a single Zalo group**, powered by **NVIDIA NIM** (`nvidia/nemotron-3.5-super-vl-120b-a12b`), with **Tavily** for web search. Written in plain Node.js (ESM), **no runtime dependencies** — only the built-in `fetch`, `node:http` and `node:test`.
+A chat bot for **Zalo group chats**, powered by **DeepSeek Flash** (primary) with **NVIDIA NIM** as fallback, and **Tavily** for web search. Written in plain Node.js (ESM), **no runtime dependencies** — only the built-in `fetch`, `node:http` and `node:test`.
 
 ## Features
 
@@ -14,8 +14,14 @@ A chat bot for **a single Zalo group**, powered by **NVIDIA NIM** (`nvidia/nemot
 - Zalo markdown formatting, long messages split into ≤ 1900 characters (Zalo's safe limit).
 - **Low latency**: no `max_tokens` cap, `reasoning_effort: none` by default (~0 thinking tokens), typing indicator, model warm-up, streaming + partial sends for slow answers, search/image cache, retry + circuit breaker.
 - **Complete answers, never cut short**: no fixed sentence budget — length follows the question; questions that need explanation/comparison/instructions come with numbers and examples. No length hints are injected into the request sent to the model.
-- **Reminders** (`/remind 20:00 mai họp nhóm`, or the model's `set_reminder` tool) persisted to `data/reminders.json`, and **pinned facts** (`/remember`) that survive context compaction.
+- **Reminders** (`/remind 20:00 tomorrow team meeting`, or the model's `set_reminder` tool) persisted to `data/reminders.json`, and **pinned facts** (`/remember`) that survive context compaction.
 - Commands: `/help`, `/reset`, `/status`, `/id`, `/summary`, `/search`, `/image`, `/sticker`, `/remind`, `/remember`, `/forget`, `/model`, `/think`, `/split`, `/compact`, `/ping`.
+
+## Language
+
+English is the default language for replies, commands, logs and documentation. The bot
+switches to the user's language when they write in Vietnamese (or any other language);
+Vietnamese input shortcuts such as `mai`/`mốt` for reminders remain supported.
 
 ## Requirements
 
@@ -153,7 +159,7 @@ After the first run the log prints the `chatId` (or type `/id` in the group) —
 | `/model` | Show the current model + the list to switch from |
 | `/model <alias>` | Switch the model for this chat: `deepseek`, `pro`, `nim`, `ultra`, `nim-light` |
 | `/tone [roast\|hard\|friendly\|default]` | Change the tone for this chat: `roast` (mocking), `hard` (blunt, heavy swearing), `friendly`, `default` = follow `BOT_TONE` |
-| `/think on\|off\|low\|high\|auto` | Turn reasoning on/off for this chat |
+| `/think on\|off\|low\|medium\|high\|auto` | Turn reasoning on/off for this chat |
 | `/split on\|off\|auto` | Control splitting replies into several messages for this chat (`off` = merge into one message, `auto` = follow `PROGRESSIVE`) |
 | `/summary [N]` | Summarize the last N messages (2–200, default 30) without changing the context |
 | `/compact` | Compact the context right away (admin): shrink tool results → summarize older ranges |
@@ -170,7 +176,7 @@ Every environment variable is in [`.env.example`](.env.example). The main groups
 - **Context**: `CONTEXT_MAX_TOKENS` (**0 = unlimited**), `CONTEXT_MAX_MESSAGES` (**0 = unlimited**), `CONTEXT_MAX_CHARS_PER_MESSAGE` (default 12000, **0 = no truncation**), `CONTEXT_TTL_HOURS` (**0 = never auto-delete**), `CONTEXT_SUMMARY`, `DATA_DIR` (relative → resolved from the repo root; on a hosting panel prefer an absolute path to a persistent volume, never `/tmp`).
 - **Compaction**: `CONTEXT_MODEL_WINDOW` (**0 = unknown → only compact when the provider reports context overflow**), `CONTEXT_COMPACT_THRESHOLD` (default `0.8`), `CONTEXT_KEEP_RECENT` (number of messages kept when summarizing, default `8`), `CONTEXT_SUMMARY_MAX_CHARS` (`1200`), `CONTEXT_TOOL_RESULT_KEEP_CHARS` (`600`).
 - **Tavily**: `SEARCH_ENABLED`, `SEARCH_AUTO` (**off = the model never searches on its own, `/search` still works**), `SEARCH_DEPTH` (`fast|basic|advanced|ultra-fast`), `SEARCH_MAX_RESULTS`, `SEARCH_COUNTRY`, `SEARCH_CACHE_TTL_MS` (0 = disable cache).
-- **Behavior**: `BOT_TONE` (**default `hard`** = heavy swearing; `extreme` = harshest, enable with `/tone max`; `roast` = medium; `friendly` = polite), `TYPING`, `TYPING_INTERVAL_MS`, `PROGRESSIVE` (`auto` = only split when the wait is long, `on` = split early, `off` = merge), `PROGRESSIVE_AFTER_MS`, `MAX_MESSAGES_PER_REPLY` (**0 = send everything**), `MAX_QUEUE_DEPTH`, `USER_RATE_LIMIT_PER_MINUTE` (**default 12, 0 = off** — stops one person spamming and burning API credit), `ADMIN_IDS`, `STICKER_ENABLED`, `STICKER_ECHO`, `STICKER_IDS` (`id1,id2:name two`).
+- **Behavior**: `BOT_TONE` (**default `hard`** = heavy swearing; `extreme` = harshest, enable with `/tone max`; `roast` = medium; `friendly` = polite), `TYPING`, `TYPING_INTERVAL_MS`, `PROGRESSIVE` (`auto` = only split when the wait is long, `on` = split early, `off` = merge), `PROGRESSIVE_AFTER_MS`, `MAX_MESSAGES_PER_REPLY` (**0 = send everything**), `MAX_QUEUE_DEPTH`, `USER_RATE_LIMIT_PER_MINUTE` (**default 12, 0 = off** — stops one person spamming a chat and burning API credit), `ADMIN_IDS`, `STICKER_ENABLED`, `STICKER_ECHO`, `STICKER_IDS` (`id1,id2:name two`).
 - **Log**: `LOG_FORMAT` (`pretty|json`), `LOG_COLOR` (`auto|always|never`), `LOG_LEVEL`.
 
 CLI flags: `--model <alias> --mode --think --max-tokens --progressive --no-progressive --no-search --no-typing --dry-run --once --verbose --help`.

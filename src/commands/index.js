@@ -1,13 +1,13 @@
 import { addFact, clearFacts, latestSummary, MAX_FACTS, removeFact } from '../context/record.js';
 import { createTokenMeter } from '../context/token-meter.js';
+import { SUMMARY_SYSTEM_PROMPT } from '../ai/prompt/index.js';
 import { formatDuration } from '../text/format.js';
 import { REMINDER_LIMITS, formatReminderTime, parseReminderArgs } from '../ai/reminders.js';
 
-const SUMMARY_INSTRUCTION =
-  'Bạn tóm tắt một đoạn hội thoại chat. Viết một đoạn ngắn bằng tiếng Việt (tối đa 600 ký tự), giữ lại: thông tin cá nhân người dùng đã nêu, chủ đề đang bàn, quyết định và câu trả lời quan trọng. Chỉ trả về bản tóm tắt, không mở bài.';
 const SUMMARY_DEFAULT_COUNT = 30;
 const SUMMARY_MAX_COUNT = 200;
 const SUMMARY_MAX_TRANSCRIPT = 12_000;
+const SUMMARY_TIMEOUT_MS = 15_000;
 
 /**
  * @param {string} text
@@ -16,7 +16,7 @@ const SUMMARY_MAX_TRANSCRIPT = 12_000;
 export function parseCommand(text) {
   const trimmed = String(text ?? '').trim();
   if (!trimmed.startsWith('/')) return null;
-  const match = trimmed.match(/^\/([a-zA-Z0-9_]+)(?:\s+([\s\S]*))?$/);
+  const match = trimmed.match(/^\/([a-zA-Z0-9_]+)(?:@[^\s]+)?(?:\s+([\s\S]*))?$/);
   if (!match) return null;
   return { name: match[1].toLowerCase(), args: (match[2] ?? '').trim() };
 }
@@ -49,11 +49,11 @@ export function createCommands(deps) {
       '• `/search <question>` — force a web search for the question',
       '• `/image <keywords>` — find and send an image',
       '• `/sticker [mood]` — send a sticker; `/sticker add <id> [name]` to add an ID',
-      '• `/remind <time> <text>` — set a reminder (e.g. `/remind 20:00 mai họp nhóm`)',
+      '• `/remind <time> <text>` — set a reminder (e.g. `/remind 20:00 tomorrow team meeting`)',
       '• `/remember <fact>` — pin a fact the bot must not forget; `/forget <n|text|all>`',
       '• `/model` — view/change the model for this chat',
       '• `/tone` — view/change the tone (roast = snarky)',
-      '• `/think on|off|low|high` — turn reasoning on/off for this chat',
+      '• `/think on|off|low|medium|high|auto` — turn reasoning on/off for this chat',
       '• `/split on|off|auto` — disable/enable splitting replies into multiple messages',
       '• `/ping` — check the connection to Zalo',
       '',
@@ -191,7 +191,7 @@ export function createCommands(deps) {
           if (!Number.isInteger(parsed) || parsed < 2 || parsed > SUMMARY_MAX_COUNT) {
             return {
               kind: 'text',
-              text: `Dùng \`/summary [số tin]\` (2–${SUMMARY_MAX_COUNT}, mặc định ${SUMMARY_DEFAULT_COUNT}).`,
+              text: `Use \`/summary [count]\` (2–${SUMMARY_MAX_COUNT}, default ${SUMMARY_DEFAULT_COUNT}).`,
             };
           }
           count = parsed;
@@ -205,7 +205,7 @@ export function createCommands(deps) {
           )
           .slice(-count);
         if (history.length < 2) {
-          return { kind: 'text', text: 'Chưa đủ tin nhắn để tóm tắt (cần ít nhất 2).' };
+          return { kind: 'text', text: 'Not enough messages to summarize (need at least 2).' };
         }
         const transcript = history
           .map(
@@ -215,12 +215,14 @@ export function createCommands(deps) {
           .join('\n')
           .slice(0, SUMMARY_MAX_TRANSCRIPT);
         const timeoutMs =
-          config.responseTimeoutMs > 0 ? Math.max(1500, config.responseTimeoutMs - 300) : 0;
+          config.responseTimeoutMs > 0
+            ? Math.max(1500, Math.min(SUMMARY_TIMEOUT_MS, config.responseTimeoutMs - 300))
+            : SUMMARY_TIMEOUT_MS;
         try {
           const response = await models.chat({
             record: ctx.record,
             messages: [
-              { role: 'system', content: SUMMARY_INSTRUCTION },
+              { role: 'system', content: SUMMARY_SYSTEM_PROMPT },
               { role: 'user', content: transcript },
             ],
             reasoning: 'none',
@@ -228,18 +230,18 @@ export function createCommands(deps) {
             maxTokens: 300,
             stream: false,
             timeoutMs,
-            ...(timeoutMs > 0 ? { signal: AbortSignal.timeout(timeoutMs) } : {}),
+            signal: AbortSignal.timeout(timeoutMs),
           });
           const text = String(/** @type {any} */ (response)?.content ?? '').trim();
           if (!text) {
-            return { kind: 'text', text: 'Model không trả về bản tóm tắt, thử lại sau.' };
+            return { kind: 'text', text: 'The model returned no summary; try again later.' };
           }
-          return { kind: 'text', text: `**Tóm tắt ${history.length} tin gần nhất:**\n\n${text}` };
+          return { kind: 'text', text: `**Summary of the last ${history.length} messages:**\n\n${text}` };
         } catch (error) {
           logger?.warn('summary command failed', {
             error: String(/** @type {any} */ (error)?.message ?? error),
           });
-          return { kind: 'text', text: `Không tóm tắt được: ${String(/** @type {any} */ (error)?.message ?? error)}` };
+          return { kind: 'text', text: `Could not summarize: ${String(/** @type {any} */ (error)?.message ?? error)}` };
         }
       }
 
@@ -425,15 +427,15 @@ export function createCommands(deps) {
         if (!text) {
           const facts = Array.isArray(ctx.record?.meta?.facts) ? ctx.record.meta.facts : [];
           if (!facts.length) {
-            return { kind: 'text', text: 'Chưa có ghi nhớ nào. Dùng `/remember <nội dung>`.' };
+            return { kind: 'text', text: 'No pinned facts yet. Use `/remember <fact>`.' };
           }
           return {
             kind: 'text',
             text: [
-              `**Ghi nhớ của chat này** (${facts.length}/${MAX_FACTS})`,
+              `**Pinned facts for this chat** (${facts.length}/${MAX_FACTS})`,
               ...facts.map((fact, index) => `${index + 1}. ${fact.text}`),
               '',
-              'Xoá bằng `/forget <số|từ khoá>` hoặc `/forget all`.',
+              'Remove with `/forget <number|keyword>` or `/forget all`.',
             ].join('\n'),
           };
         }
@@ -441,14 +443,14 @@ export function createCommands(deps) {
         if (!result.added) {
           const message =
             result.reason === 'duplicate'
-              ? 'Điều này đã được ghi nhớ rồi.'
+              ? 'I already remember that.'
               : result.reason === 'full'
-                ? `Đã đạt giới hạn ${MAX_FACTS} ghi nhớ — xoá bớt bằng \`/forget\`.`
-                : 'Nội dung ghi nhớ trống.';
+                ? `The ${MAX_FACTS}-fact limit is reached — remove one with \`/forget\`.`
+                : 'The fact is empty.';
           return { kind: 'text', text: message };
         }
         store.touch?.(ctx.chatId);
-        return { kind: 'text', text: `Đã ghi nhớ: ${/** @type {any} */ (result.fact).text}` };
+        return { kind: 'text', text: `Remembered: ${/** @type {any} */ (result.fact).text}` };
       }
 
       case 'forget': {
@@ -457,20 +459,20 @@ export function createCommands(deps) {
         }
         const target = args.trim();
         if (!target) {
-          return { kind: 'text', text: 'Dùng `/forget <số|từ khoá>` hoặc `/forget all`.' };
+          return { kind: 'text', text: 'Use `/forget <number|keyword>` or `/forget all`.' };
         }
         if (target.toLowerCase() === 'all') {
           const count = clearFacts(ctx.record);
-          if (!count) return { kind: 'text', text: 'Không có ghi nhớ nào để xoá.' };
+          if (!count) return { kind: 'text', text: 'There are no pinned facts to forget.' };
           store.touch?.(ctx.chatId);
-          return { kind: 'text', text: `Đã xoá ${count} ghi nhớ.` };
+          return { kind: 'text', text: `Forgot ${count} pinned fact${count === 1 ? '' : 's'}.` };
         }
         const removed = removeFact(ctx.record, target);
         if (!removed) {
-          return { kind: 'text', text: `Không tìm thấy ghi nhớ "${target}".` };
+          return { kind: 'text', text: `No pinned fact matches "${target}".` };
         }
         store.touch?.(ctx.chatId);
-        return { kind: 'text', text: `Đã quên: ${removed.text}` };
+        return { kind: 'text', text: `Forgot: ${removed.text}` };
       }
 
       case 'remind': {
@@ -485,13 +487,13 @@ export function createCommands(deps) {
             .slice()
             .sort((a, b) => a.at - b.at);
           if (!items.length) {
-            return `Chưa có nhắc hẹn nào trong chat này. Dùng \`/remind 20:00 mai họp nhóm\`.`;
+            return `No reminders in this chat yet. Use \`/remind 20:00 tomorrow team meeting\`.`;
           }
           return [
-            `**Nhắc hẹn của chat này** (${items.length}/${REMINDER_LIMITS.MAX_PER_CHAT})`,
+            `**Reminders in this chat** (${items.length}/${REMINDER_LIMITS.MAX_PER_CHAT})`,
             ...items.map((item) => `• #${item.id} — ${formatReminderTime(item.at)} — ${item.text}`),
             '',
-            'Xoá bằng `/remind remove <id>`.',
+            'Remove with `/remind remove <id>`.',
           ].join('\n');
         };
 
@@ -503,14 +505,14 @@ export function createCommands(deps) {
         if (cancel) {
           const target = raw.slice(cancel[0].length).trim();
           if (!target) {
-            return { kind: 'text', text: 'Dùng `/remind remove <id>` (xem id bằng `/remind list`).' };
+            return { kind: 'text', text: 'Use `/remind remove <id>` (see ids with `/remind list`).' };
           }
           const removed = await reminders.remove(ctx.chatId, target);
           return {
             kind: 'text',
             text: removed
-              ? `Đã xoá nhắc #${removed.id}: ${removed.text}`
-              : `Không tìm thấy nhắc "${target}" trong chat này.`,
+              ? `Removed reminder #${removed.id}: ${removed.text}`
+              : `No reminder "${target}" in this chat.`,
           };
         }
 
@@ -528,13 +530,13 @@ export function createCommands(deps) {
             kind: 'text',
             text:
               reason === 'chat-limit'
-                ? `Chat này đã có tối đa ${REMINDER_LIMITS.MAX_PER_CHAT} nhắc hẹn — xoá bớt bằng \`/remind remove <id>\`.`
-                : 'Đã đạt giới hạn tổng số nhắc hẹn, thử lại sau.',
+                ? `This chat already has ${REMINDER_LIMITS.MAX_PER_CHAT} reminders — remove one with \`/remind remove <id>\`.`
+                : 'The total reminder limit is reached; try again later.',
           };
         }
         return {
           kind: 'text',
-          text: `Đã đặt nhắc #${result.item.id} lúc ${formatReminderTime(result.item.at)}: ${result.item.text}`,
+          text: `Reminder #${result.item.id} set for ${formatReminderTime(result.item.at)}: ${result.item.text}`,
         };
       }
 

@@ -25,7 +25,8 @@ export function stripMention(text, names = []) {
   for (const name of names) {
     const clean = String(name ?? '').trim();
     if (!clean) continue;
-    out = out.replace(new RegExp(`@\\s*${escapeRegExp(clean)}`, 'giu'), ' ');
+    // Require a boundary after the name: "An" must not match the start of "Anh".
+    out = out.replace(new RegExp(`@\\s*${escapeRegExp(clean)}(?![\\p{L}\\p{N}_])`, 'giu'), ' ');
     out = out.replace(new RegExp(`^\\s*${escapeRegExp(clean)}\\s*[:,]\\s*`, 'iu'), '');
   }
   return out
@@ -252,8 +253,8 @@ export function prepareOutgoing(text, options = {}) {
  * @param {Date} [date]
  */
 export function formatNow(date = new Date()) {
-  const formatter = new Intl.DateTimeFormat('vi-VN', {
-    timeZone: 'Asia/Bangkok',
+  const formatter = new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Asia/Ho_Chi_Minh',
     weekday: 'long',
     day: '2-digit',
     month: '2-digit',

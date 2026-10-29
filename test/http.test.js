@@ -73,13 +73,13 @@ test('no retry and no breaker trip when the caller aborts', async () => {
   assert.equal(http.stateOf('abort-svc').open, false);
 });
 
-test('circuit breaker opens after 5 failures', async () => {
+test('circuit breaker opens after 5 server failures', async () => {
   let calls = 0;
   const http = createHttp({
     sleep: noSleep,
     fetchImpl: async () => {
       calls += 1;
-      return response({ error: 'nope' }, 401);
+      return response({ error: 'nope' }, 500);
     },
   });
   for (let i = 0; i < 5; i += 1) {
@@ -91,4 +91,20 @@ test('circuit breaker opens after 5 failures', async () => {
   );
   assert.equal(calls, 5);
   assert.equal(http.stateOf('breaker').open, true);
+});
+
+test('client errors (4xx) do not trip the circuit breaker', async () => {
+  let calls = 0;
+  const http = createHttp({
+    sleep: noSleep,
+    fetchImpl: async () => {
+      calls += 1;
+      return response({ error: 'unauthorized' }, 401);
+    },
+  });
+  for (let i = 0; i < 8; i += 1) {
+    await assert.rejects(() => http.requestJson('https://example.com', { service: 'auth', retries: 0 }));
+  }
+  assert.equal(calls, 8);
+  assert.equal(http.stateOf('auth').open, false);
 });

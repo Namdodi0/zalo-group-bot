@@ -79,14 +79,14 @@ export function createToolRuntime(options) {
         function: {
           name: 'set_reminder',
           description:
-            'Set a reminder in this chat. Use when the user asks to be reminded later ("nhắc tôi 8h tối nay", "remind me in 10 minutes"). Convert the requested time to Vietnam time. Only tell the user the reminder is set after this tool returns ok.',
+            'Set a reminder in this chat. Use when the user asks to be reminded later ("remind me at 8pm tonight", "remind me in 10 minutes"). Convert the requested time to Vietnam time. Only tell the user the reminder is set after this tool returns ok.',
           parameters: {
             type: 'object',
             properties: {
               when: {
                 type: 'string',
                 description:
-                  'Reminder time in Vietnam time: "HH:MM", "HH:MM mai", "HH:MM mốt", "HH:MM dd/mm", or relative "+10m", "+2h", "+1d". Example: "20:00", "08:00 mai", "09:30 05/11", "+30m".',
+                  'Reminder time in Vietnam time: "HH:MM", "HH:MM tomorrow", "HH:MM dd/mm", or relative "+10m", "+2h", "+1d". Example: "20:00", "08:00 tomorrow", "09:30 05/11", "+30m".',
               },
               text: { type: 'string', description: 'What to remind the user about' },
             },
@@ -240,10 +240,18 @@ export function createToolRuntime(options) {
         }
         if (Date.now() > deadline) break;
         const caption = String(args?.caption ?? '').trim() || query;
-        await zalo.sendPhoto(ctx.chatId, url, caption);
-        metrics?.inc('tool.sendImage.ok');
-        logger.info('image sent', { query, url, icon: '🖼️' });
-        return { ok: true, text: `Sent the image "${query}" to the user.`, data: { url } };
+        try {
+          await zalo.sendPhoto(ctx.chatId, url, caption);
+          metrics?.inc('tool.sendImage.ok');
+          logger.info('image sent', { query, url, icon: '🖼️' });
+          return { ok: true, text: `Sent the image "${query}" to the user.`, data: { url } };
+        } catch (error) {
+          // A URL can validate but still be rejected by Zalo: try the next candidate.
+          logger.debug('send_image failed, trying next candidate', {
+            url,
+            error: String(/** @type {any} */ (error)?.message ?? error),
+          });
+        }
       }
 
       metrics?.inc('tool.sendImage.fail');

@@ -140,11 +140,6 @@ export function loadEnvFiles(options = {}) {
   return report;
 }
 
-/** @returns {EnvReport|null} Report from the most recent loadEnvFiles() call. */
-export function getEnvReport() {
-  return lastReport;
-}
-
 /**
  * Config troubleshooting hints: where .env was searched for and what was found.
  * Used when loadConfig() throws ConfigError so the user knows where to fix things.

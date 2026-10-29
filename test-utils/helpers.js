@@ -38,7 +38,7 @@ export function makeConfig(overrides = {}) {
       timeoutMs: 5000,
     },
     model: { defaultAlias: 'deepseek', fallbackAlias: 'nim-light' },
-    ai: { reasoning: 'none', maxTokens: null, temperature: 0.6, timeoutMs: 5000 },
+    ai: { reasoning: 'none', maxTokens: null, timeoutMs: 5000 },
     responseTimeoutMs: 8000,
     context: {
       dir: './data/test',

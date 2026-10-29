@@ -32,6 +32,8 @@ export class CircuitOpenError extends Error {
 /** @param {number} ms */
 const defaultSleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
+const MAX_TIMER_MS = 2_147_483_647;
+
 /**
  * Combine the caller signal with a timeout signal. A non-finite or <= 0 timeout means
  * "no limit": the request waits until the caller aborts or the connection drops.
@@ -41,7 +43,8 @@ const defaultSleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
  */
 function withTimeout(signal, timeoutMs) {
   const limit = Number(timeoutMs);
-  const timeout = Number.isFinite(limit) && limit > 0 ? AbortSignal.timeout(limit) : null;
+  const timeout =
+    Number.isFinite(limit) && limit > 0 ? AbortSignal.timeout(Math.min(limit, MAX_TIMER_MS)) : null;
   if (!timeout) return signal;
   if (!signal) return timeout;
   // @ts-ignore AbortSignal.any is available since Node 20.3
@@ -212,7 +215,8 @@ export function createHttp(options = {}) {
           });
         }
         if (attempt >= retries || !err.retryable) {
-          if (!(err instanceof CircuitOpenError)) recordFailure(service);
+          // Client errors (4xx) are not service outages: do not let them trip the breaker.
+          if (err.retryable) recordFailure(service);
           throw err;
         }
         attempt += 1;
@@ -276,7 +280,7 @@ export function createHttp(options = {}) {
         }
         const err = normalize(error, { service, url });
         if (attempt >= retries || !err.retryable) {
-          recordFailure(service);
+          if (err.retryable) recordFailure(service);
           throw err;
         }
         attempt += 1;

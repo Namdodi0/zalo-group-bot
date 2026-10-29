@@ -63,6 +63,7 @@ function redactValue(value, secrets) {
     /** @type {Record<string, unknown>} */
     const out = {};
     for (const [key, item] of Object.entries(value)) {
+      if (key === '__proto__' || key === 'constructor' || key === 'prototype') continue;
       if (SENSITIVE_KEY.test(key) && typeof item === 'string') {
         out[key] = '***';
         continue;

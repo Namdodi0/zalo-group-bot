@@ -59,6 +59,7 @@ async function setup(options = {}) {
   const nimCalls = [];
   const replies = options.replies ?? [{ content: 'Hello 👋', toolCalls: [] }];
   let index = 0;
+  let primaryCalls = 0;
   let overflowed = false;
   const target = {
     alias: 'deepseek',
@@ -68,6 +69,7 @@ async function setup(options = {}) {
   };
   async function reply(input, viaFallback = false) {
     nimCalls.push(input);
+    if (!viaFallback) primaryCalls += 1;
     if (options.delayMs) await new Promise((resolve) => setTimeout(resolve, options.delayMs));
     if (options.overflowFirst && !overflowed) {
       overflowed = true;
@@ -75,7 +77,22 @@ async function setup(options = {}) {
     }
     if (options.nimError) throw options.nimError;
     if (options.primaryError && !viaFallback) throw options.primaryError;
+    if (options.failPrimaryAfterFirst && !viaFallback && primaryCalls > 1) {
+      throw new HttpError('upstream down', { status: 503 });
+    }
     if (options.fallbackError && viaFallback) throw options.fallbackError;
+    if (options.finalContent && !input.tools?.length) {
+      return {
+        content: options.finalContent,
+        reasoning: '',
+        toolCalls: [],
+        usage: { prompt_tokens: 20, completion_tokens: 10 },
+        latencyMs: 1,
+        completionTokens: 10,
+        completionMs: 1,
+        aborted: false,
+      };
+    }
     if (options.deltaText && input.onDelta) await input.onDelta(options.deltaText);
     const item = replies[Math.min(index, replies.length - 1)];
     index += 1;
@@ -483,9 +500,9 @@ test('time context: a separate, durable user message that never alters the user 
   const record = await store.get('chat-1');
   const timeEntries = record.messages.filter((m) => m.kind === 'context' && m.source === 'runtime:time');
   assert.equal(timeEntries.length, 1);
-  assert.match(timeEntries[0].text, /Th\u1eddi gian hi\u1ec7n t\u1ea1i/);
+  assert.match(timeEntries[0].text, /Current time/);
   const userTurn = record.messages.find((m) => m.kind === 'turn' && m.role === 'user');
-  assert.equal(userTurn.text.includes('Th\u1eddi gian hi\u1ec7n t\u1ea1i'), false);
+  assert.equal(userTurn.text.includes('Current time'), false);
 });
 
 test('time context is refreshed and never duplicated across turns', async () => {
@@ -511,7 +528,7 @@ test('ordinary questions do not inject date/time into the prompt sent to the mod
   const { agent, nimCalls } = await setup();
   await agent.handle(textEvent('explain TCP'));
   const lastUser = [...nimCalls.at(-1).messages].reverse().find((message) => message.role === 'user');
-  assert.equal(lastUser.content.includes('Th\u1eddi gian hi\u1ec7n t\u1ea1i'), false);
+  assert.equal(lastUser.content.includes('Current time'), false);
   assert.equal(lastUser.content.includes('Length'), false);
 });
 
@@ -528,7 +545,7 @@ test('a question with a time marker: the payload has a time context message', as
   const messages = nimCalls.at(-1).messages;
   assert.ok(
     messages.some(
-      (message) => typeof message.content === 'string' && message.content.includes('Th\u1eddi gian hi\u1ec7n t\u1ea1i'),
+      (message) => typeof message.content === 'string' && message.content.includes('Current time'),
     ),
   );
 });
@@ -630,5 +647,80 @@ test('pinned facts are re-injected as a context message on every turn', async ()
     .map((message) => (typeof message.content === 'string' ? message.content : ''))
     .join('\n');
   assert.match(payload, /Tên người dùng là Nam/);
-  assert.match(payload, /không phải chỉ dẫn/);
+  assert.match(payload, /not instructions/);
+});
+
+test('fallback after a tool round sends a clean transcript without tools', async () => {
+  const tavily = {
+    search: async () => ({ results: [{ title: 'Gold', url: 'https://x', content: 'price' }], images: [] }),
+  };
+  const { agent, sent, nimCalls } = await setup({
+    tavily,
+    failPrimaryAfterFirst: true,
+    replies: [
+      {
+        content: '',
+        toolCalls: [{ id: 'call_1', name: 'web_search', arguments: { query: 'gold' }, rawArguments: '{"query":"gold"}' }],
+      },
+      { content: 'Fallback answer' },
+    ],
+  });
+
+  await agent.handle(textEvent('gold price?'));
+
+  const fallbackCall = nimCalls.at(-1);
+  assert.equal(fallbackCall.tools, undefined);
+  assert.equal(fallbackCall.messages.some((message) => message.role === 'tool'), false);
+  assert.equal(fallbackCall.messages.some((message) => Array.isArray(message.tool_calls)), false);
+  assert.match(
+    fallbackCall.messages.map((message) => String(message.content ?? '')).join('\n'),
+    /\[tool result\]/,
+  );
+  assert.match(sent.at(-1).text, /Fallback answer/);
+});
+
+test('after MAX_TOOL_ROUNDS a final no-tools call answers from the tool results', async () => {
+  const tavily = {
+    search: async () => ({ results: [{ title: 'Gold', url: 'https://x', content: 'price' }], images: [] }),
+  };
+  const toolRound = {
+    content: '',
+    toolCalls: [{ id: 'call_1', name: 'web_search', arguments: { query: 'gold' }, rawArguments: '{"query":"gold"}' }],
+  };
+  const { agent, sent, nimCalls } = await setup({
+    tavily,
+    replies: [toolRound],
+    finalContent: 'Final synthesis from search results',
+  });
+
+  await agent.handle(textEvent('gold price?'));
+
+  assert.equal(nimCalls.length, 4);
+  assert.equal(nimCalls.at(-1).tools, undefined);
+  assert.match(sent.at(-1).text, /Final synthesis/);
+});
+
+test('STICKER_ECHO=off sends nothing when a sticker arrives', async () => {
+  const { agent, sent, sentStickers } = await setup({
+    configOverrides: { sticker: { enabled: true, echo: false, file: './data/test/stickers.json' } },
+  });
+  await agent.handle(
+    textEvent('', { kind: 'sticker', sticker: '0e078a2fb66a5f34067b', messageId: 'sticker-1' }),
+  );
+  assert.equal(sentStickers.length, 0);
+  assert.equal(sent.length, 0);
+});
+
+test('the agent leaves temperature to the provider adapter', async () => {
+  const { agent, nimCalls } = await setup();
+  await agent.handle(textEvent('hi'));
+  assert.equal('temperature' in nimCalls[0], false);
+});
+
+test('the sender rate limit is scoped per chat', async () => {
+  const { agent, nimCalls } = await setup({ configOverrides: { userRateLimitPerMinute: 1 } });
+  await agent.handle(textEvent('one', { messageId: 'rl-1', chatId: 'chat-1' }));
+  await agent.handle(textEvent('two', { messageId: 'rl-2', chatId: 'chat-1' }));
+  await agent.handle(textEvent('three', { messageId: 'rl-3', chatId: 'chat-2' }));
+  assert.equal(nimCalls.length, 2);
 });

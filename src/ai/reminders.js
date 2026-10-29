@@ -47,7 +47,7 @@ function nextDay(at) {
 
 /**
  * Parse `/remind` arguments.
- * Supported: `+10m` `+2h` `+1d`, `HH:MM`, `HH:MM mai|mốt`, `HH:MM dd/mm`.
+ * Supported: `+10m` `+2h` `+1d`, `HH:MM`, `HH:MM tomorrow|mai|mốt`, `HH:MM dd/mm`.
  * @param {string} args
  * @param {number} [now]
  * @returns {{at?: number, text?: string, error?: string}}
@@ -55,7 +55,7 @@ function nextDay(at) {
 export function parseReminderArgs(args, now = Date.now()) {
   const input = String(args ?? '').trim();
   if (!input) {
-    return { error: 'Usage: `/remind <time> <text>` — ví dụ: `/remind 20:00 mai họp nhóm`' };
+    return { error: 'Usage: `/remind <time> <text>` — e.g. `/remind 20:00 tomorrow team meeting`' };
   }
   const tokens = input.split(/\s+/);
   const first = tokens[0];
@@ -73,17 +73,18 @@ export function parseReminderArgs(args, now = Date.now()) {
     if (clock) {
       const hours = Number(clock[1]);
       const minutes = Number(clock[2]);
-      if (hours > 23 || minutes > 59) return { error: `Giờ không hợp lệ: "${first}"` };
+      if (hours > 23 || minutes > 59) return { error: `Invalid time: "${first}"` };
       const current = vnParts(now);
       let year = current.year;
       let month = current.month;
       let day = current.day;
       let explicitDay = false;
       const next = String(tokens[1] ?? '').toLowerCase();
-      if (['mai', 'mốt', 'mot'].includes(next)) {
+      if (['tomorrow', 'mai', 'mốt', 'mot'].includes(next)) {
         consumed = 2;
         explicitDay = true;
-        const shifted = new Date(Date.UTC(year, month - 1, day) + (next === 'mai' ? DAY_MS : 2 * DAY_MS));
+        const offset = ['tomorrow', 'mai'].includes(next) ? DAY_MS : 2 * DAY_MS;
+        const shifted = new Date(Date.UTC(year, month - 1, day) + offset);
         year = shifted.getUTCFullYear();
         month = shifted.getUTCMonth() + 1;
         day = shifted.getUTCDate();
@@ -91,7 +92,12 @@ export function parseReminderArgs(args, now = Date.now()) {
         consumed = 2;
         explicitDay = true;
         const [d, m] = next.split(/[/-]/).map(Number);
-        if (d < 1 || d > 31 || m < 1 || m > 12) return { error: `Ngày không hợp lệ: "${next}"` };
+        if (d < 1 || d > 31 || m < 1 || m > 12) return { error: `Invalid date: "${next}"` };
+        // Reject days a month does not have (31/02 must not silently roll into March).
+        const probe = new Date(Date.UTC(year, m - 1, d));
+        if (probe.getUTCFullYear() !== year || probe.getUTCMonth() !== m - 1 || probe.getUTCDate() !== d) {
+          return { error: `Invalid date: "${next}"` };
+        }
         day = d;
         month = m;
       }
@@ -101,20 +107,23 @@ export function parseReminderArgs(args, now = Date.now()) {
   }
 
   if (!Number.isFinite(at)) {
-    return { error: 'Không hiểu thời gian. Dùng `HH:MM`, `HH:MM mai`, `HH:MM 25/12`, `+10m`, `+2h` hoặc `+1d`.' };
+    return {
+      error:
+        'Could not understand the time. Use `HH:MM`, `HH:MM tomorrow`, `HH:MM 25/12`, `+10m`, `+2h` or `+1d`.',
+    };
   }
   const text = tokens.slice(consumed).join(' ').trim();
-  if (!text) return { error: 'Thiếu nội dung nhắc. Ví dụ: `/remind 20:00 mai họp nhóm`' };
-  if (text.length > MAX_REMINDER_CHARS) return { error: `Nội dung quá dài (tối đa ${MAX_REMINDER_CHARS} ký tự).` };
+  if (!text) return { error: 'Missing reminder text. Example: `/remind 20:00 tomorrow team meeting`' };
+  if (text.length > MAX_REMINDER_CHARS) return { error: `Reminder text is too long (max ${MAX_REMINDER_CHARS} characters).` };
   const delay = at - now;
-  if (delay < MIN_DELAY_MS) return { error: 'Thời gian nhắc phải ở tương lai.' };
-  if (delay > MAX_DELAY_MS) return { error: 'Chỉ đặt nhắc trong vòng 30 ngày.' };
+  if (delay < MIN_DELAY_MS) return { error: 'The reminder time must be in the future.' };
+  if (delay > MAX_DELAY_MS) return { error: 'Reminders can only be set up to 30 days ahead.' };
   return { at, text };
 }
 
 /** @param {number} at */
 export function formatReminderTime(at) {
-  return new Intl.DateTimeFormat('vi-VN', {
+  return new Intl.DateTimeFormat('en-GB', {
     timeZone: 'Asia/Ho_Chi_Minh',
     hour: '2-digit',
     minute: '2-digit',
@@ -151,7 +160,7 @@ export function createReminderStore(options = {}) {
       const parsed = JSON.parse(raw);
       const list = Array.isArray(parsed?.items) ? parsed.items : [];
       const cutoff = now() - MAX_LATE_MS;
-      items = list
+      const kept = list
         .filter(
           (item) =>
             item &&
@@ -170,6 +179,10 @@ export function createReminderStore(options = {}) {
           attempts: Number(item.attempts) || 0,
         }))
         .slice(0, MAX_TOTAL);
+      if (kept.length < list.length) {
+        logger?.warn('reminders dropped on load', { kept: kept.length, dropped: list.length - kept.length });
+      }
+      items = kept;
       nextId = items.reduce((max, item) => Math.max(max, item.id), 0) + 1;
     } catch {
       // No file yet (or unreadable): start empty.
@@ -240,13 +253,13 @@ export function createReminderStore(options = {}) {
   }
 
   /** Deliver due reminders (also used by tests; `start()` calls it on an interval). */
-  async function tick() {
+  async function runTick() {
     const due = items.filter((item) => item.at <= now());
     if (!due.length) return 0;
     let delivered = 0;
     for (const item of due) {
       try {
-        await send(item.chatId, `⏰ Nhắc: ${item.text}`);
+        await send(item.chatId, `⏰ Reminder: ${item.text}`);
         items = items.filter((entry) => entry.id !== item.id);
         delivered += 1;
       } catch (error) {
@@ -265,6 +278,19 @@ export function createReminderStore(options = {}) {
     }
     await save();
     return delivered;
+  }
+
+  /** @type {Promise<number>|null} */
+  let tickInFlight = null;
+
+  /** Single-flight: an overlapping tick must not deliver the same reminder twice. */
+  function tick() {
+    if (!tickInFlight) {
+      tickInFlight = runTick().finally(() => {
+        tickInFlight = null;
+      });
+    }
+    return tickInFlight;
   }
 
   function start() {

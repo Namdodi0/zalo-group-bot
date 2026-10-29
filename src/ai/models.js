@@ -40,22 +40,3 @@ export const FALLBACK_ALIAS = 'nim-light';
 export function isKnownAlias(value) {
   return Object.prototype.hasOwnProperty.call(MODEL_ALIASES, value);
 }
-
-/**
- * Find an alias by model name or provider name.
- * @param {string} value
- * @returns {string|null}
- */
-export function findAlias(value) {
-  const needle = String(value ?? '').trim().toLowerCase();
-  if (!needle) return null;
-  if (isKnownAlias(needle)) return needle;
-  // allow "/model deepseek" or "/model nim"
-  for (const [alias, meta] of Object.entries(MODEL_ALIASES)) {
-    if (meta.provider === needle) return alias;
-  }
-  for (const [alias, meta] of Object.entries(MODEL_ALIASES)) {
-    if (meta.label.toLowerCase().includes(needle)) return alias;
-  }
-  return null;
-}

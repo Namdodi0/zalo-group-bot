@@ -68,16 +68,29 @@ export function createContextStore(options) {
     );
   }
 
+  /** @type {Map<string, number>} */
+  const epochs = new Map();
+
   let writeSeq = 0;
 
   /** @param {ChatRecord} record */
   async function persist(record) {
     const file = fileFor(record.chatId);
+    // A reset between "write temp" and "rename" must not resurrect the old file.
+    const epoch = epochs.get(record.chatId) ?? 0;
     // Unique tmp name: debounce and flush() can write the same chat concurrently.
     writeSeq += 1;
     const tmp = `${file}.${process.pid}.${writeSeq}.tmp`;
     const payload = JSON.stringify(record);
     await fsp.writeFile(tmp, payload, 'utf8');
+    if ((epochs.get(record.chatId) ?? 0) !== epoch) {
+      try {
+        await fsp.unlink(tmp);
+      } catch {
+        // ignore
+      }
+      return;
+    }
     await fsp.rename(tmp, file);
   }
 
@@ -159,6 +172,7 @@ export function createContextStore(options) {
    *   keep `meta` (tone/model/thinking). By default the whole file is removed as before.
    */
   async function reset(chatId, options = {}) {
+    epochs.set(chatId, (epochs.get(chatId) ?? 0) + 1);
     const timer = timers.get(chatId);
     if (timer) {
       clearTimeout(timer);

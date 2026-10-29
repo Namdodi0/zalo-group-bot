@@ -32,15 +32,6 @@ export function createZaloPrompt(options = {}) {
   return registry;
 }
 
-/**
- * The bot's system prompt. Static prompt (no date/time) so the prefix is stable across turns.
- * @param {Parameters<typeof createZaloPrompt>[0]} [options]
- */
-export function buildSystemPrompt(options = {}) {
-  const registry = createZaloPrompt(options);
-  return registry.render(registry.assemble());
-}
-
 export const buildSearchContext = renderSearchContext;
 
 export const SUMMARY_SYSTEM_PROMPT =

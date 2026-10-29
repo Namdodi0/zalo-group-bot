@@ -6,11 +6,16 @@ export function estimateTextTokens(text) {
 }
 
 /**
- * @param {{text?: string}} message
+ * @param {{text?: string, toolCalls?: Array<{name?: string, arguments?: any, rawArguments?: string}>}} message
  */
 export function estimateMessageTokens(message) {
   const overhead = 6;
-  return overhead + estimateTextTokens(message.text ?? '');
+  let chars = String(message.text ?? '').length;
+  for (const call of message.toolCalls ?? []) {
+    const args = call?.rawArguments ?? JSON.stringify(call?.arguments ?? {});
+    chars += String(call?.name ?? '').length + String(args ?? '').length;
+  }
+  return overhead + Math.ceil(chars / 3.2);
 }
 
 /**

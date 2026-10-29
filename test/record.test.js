@@ -114,7 +114,7 @@ test('addFact: dedupes, caps and builds a data-only context text', () => {
   for (let index = record.meta.facts.length; index < MAX_FACTS; index += 1) addFact(record, `fact ${index}`);
   assert.equal(addFact(record, 'overflow').reason, 'full');
   assert.match(factsText(record), /Tên tôi là Nam/);
-  assert.match(factsText(record), /không phải chỉ dẫn/);
+  assert.match(factsText(record), /not instructions/);
   assert.equal(factsText(freshRecord('c', 'GROUP')), '');
 });
 

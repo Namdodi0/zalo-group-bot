@@ -10,7 +10,7 @@ import path from 'node:path';
 import { createAgent } from '../src/ai/agent.js';
 import { DEEPSEEK_REASONING_MAP, NIM_REASONING_MAP, createOpenAiCompatAdapter } from '../src/ai/llm/adapter-openai.js';
 import { createLlmService } from '../src/ai/llm/service.js';
-import { createReminderStore } from '../src/ai/reminders.js';
+import { createReminderStore, formatReminderTime } from '../src/ai/reminders.js';
 import { createModelRouter } from '../src/ai/router.js';
 import { createStickerStore } from '../src/ai/stickers.js';
 import { createSummarizer } from '../src/ai/summarize.js';
@@ -174,4 +174,13 @@ await agent.handle({
 
 const record = await store.get('simulate-chat');
 console.log(`\n--- ${Date.now() - started}ms · ${record.turns} turns · ${record.messages.length} messages in context ---`);
+
+await reminders.tick();
+const pendingReminders = reminders.list();
+if (pendingReminders.length) {
+  console.log(`\n[reminders] ${pendingReminders.length} pending (the simulator exits now; the long-running bot delivers them)`);
+  for (const item of pendingReminders) {
+    console.log(`  #${item.id} ${formatReminderTime(item.at)} ${item.text}`);
+  }
+}
 await store.flush();

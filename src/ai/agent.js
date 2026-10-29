@@ -57,6 +57,43 @@ function planAttemptBudget(input) {
 /** @param {number} ms */
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
+const MAX_TIMER_MS = 2_147_483_647;
+
+/** AbortSignal.timeout overflows (fires immediately) above 2^31-1 ms. */
+/** @param {number} ms */
+function timeoutSignal(ms) {
+  const value = Number(ms);
+  if (!Number.isFinite(value) || value <= 0) return undefined;
+  return AbortSignal.timeout(Math.min(value, MAX_TIMER_MS));
+}
+
+/**
+ * Turn a tool-call transcript into messages a fallback model without tools can read.
+ * Tool history is invalid when no `tools` parameter is sent, so tool results become
+ * plain user-visible context instead of `role: "tool"` entries.
+ * @param {any[]} messages
+ */
+function fallbackMessages(messages) {
+  /** @type {any[]} */
+  const out = [];
+  for (const message of messages ?? []) {
+    if (message?.role === 'assistant' && Array.isArray(message.tool_calls)) {
+      if (typeof message.content === 'string' && message.content.trim()) {
+        out.push({ role: 'assistant', content: message.content });
+      }
+      continue;
+    }
+    if (message?.role === 'tool') {
+      const text =
+        typeof message.content === 'string' ? message.content : JSON.stringify(message.content ?? {});
+      out.push({ role: 'user', content: `[tool result]\n${text}` });
+      continue;
+    }
+    out.push(message);
+  }
+  return out;
+}
+
 /**
  * Shorten text for console logs: drop newlines, trim for readability.
  * @param {unknown} text
@@ -145,7 +182,13 @@ export function createAgent(deps) {
   /** @param {string} messageId */
   function alreadySeen(messageId) {
     if (!messageId) return false;
-    if (seen.has(messageId)) return true;
+    if (seen.has(messageId)) {
+      // Refresh insertion order so the map behaves as an LRU, not a FIFO.
+      const ts = seen.get(messageId);
+      seen.delete(messageId);
+      seen.set(messageId, ts);
+      return true;
+    }
     seen.set(messageId, Date.now());
     if (seen.size > 2000) {
       const oldest = seen.keys().next().value;
@@ -158,20 +201,25 @@ export function createAgent(deps) {
 
   /**
    * Limit how many messages one person sends per minute — blocks spam that burns API credit.
+   * Scoped per chat so one busy group cannot lock a member out of another chat.
    * Ignore silently (no reply) so we do not encourage spam.
+   * @param {string} chatId
    * @param {string} senderId
    */
-  function rateLimited(senderId) {
+  function rateLimited(chatId, senderId) {
     const limit = config.userRateLimitPerMinute ?? 0;
     if (!limit || !senderId) return false;
+    const key = `${chatId}:${senderId}`;
     const now = Date.now();
-    const hits = (userHits.get(senderId) ?? []).filter((ts) => now - ts < RATE_WINDOW_MS);
+    const hits = (userHits.get(key) ?? []).filter((ts) => now - ts < RATE_WINDOW_MS);
     if (hits.length >= limit) {
-      userHits.set(senderId, hits);
+      userHits.delete(key);
+      userHits.set(key, hits);
       return true;
     }
     hits.push(now);
-    userHits.set(senderId, hits);
+    userHits.delete(key);
+    userHits.set(key, hits);
     if (userHits.size > 500) {
       const oldest = userHits.keys().next().value;
       if (oldest !== undefined) userHits.delete(oldest);
@@ -259,7 +307,10 @@ export function createAgent(deps) {
     const base = config.ai.reasoning;
     if (base !== 'auto') return base;
     const wantsDepth =
-      text.length > 200 || /ph\u00e2n t\u00edch|gi\u1ea3i th\u00edch|so s\u00e1nh|t\u1ea1i sao|v\u00ec sao|chi ti\u1ebft|l\u00ean k\u1ebf ho\u1ea1ch/i.test(text);
+      text.length > 200 ||
+      /ph\u00e2n t\u00edch|gi\u1ea3i th\u00edch|so s\u00e1nh|t\u1ea1i sao|v\u00ec sao|chi ti\u1ebft|l\u00ean k\u1ebf ho\u1ea1ch|\b(?:analy[sz]e|explain|compare|why|in detail|plan)\b/i.test(
+        text,
+      );
     return wantsDepth ? 'low' : 'none';
   }
 
@@ -285,10 +336,8 @@ export function createAgent(deps) {
 
     const textWithImage =
       rawText && event.imageUrl ? `${rawText}\n[${imageNote}]` : effectiveText;
-    const storedText =
-      event.chatType === 'GROUP' && textWithImage
-        ? `${event.senderName}: ${textWithImage}`
-        : textWithImage;
+    const isGroup = event.chatType !== 'PRIVATE';
+    const storedText = isGroup && textWithImage ? `${event.senderName}: ${textWithImage}` : textWithImage;
 
     const userTurn = turnEntry({
       text: storedText,
@@ -301,7 +350,7 @@ export function createAgent(deps) {
     const toolDefs = tools.definitions();
     const promptRegistry = createZaloPrompt({
       botName: zalo.displayName || 'AI assistant',
-      chatType: event.chatType,
+      chatType: isGroup ? 'GROUP' : 'PRIVATE',
       // Tool guidance only appears when the matching schema is actually sent to the model.
       tools: toolDefs,
       imageEnabled: config.image.enabled,
@@ -439,6 +488,9 @@ export function createAgent(deps) {
     let completionMs = 0;
     let completionTokens = 0;
     let overflowRecovered = false;
+    /** @type {{model: string, alias: string, provider: string}|null} */
+    let answeredBy = null;
+    let abortReason = '';
 
     for (let round = 0; round < MAX_TOOL_ROUNDS; round += 1) {
       const remaining = deadline - Date.now();
@@ -482,16 +534,12 @@ export function createAgent(deps) {
             messages,
             tools: toolDefs.length ? toolDefs : undefined,
             reasoning,
-            temperature: config.ai.temperature,
             maxTokens: config.ai.maxTokens,
             stream: streaming,
             onDelta,
             ttftMs: budget.ttftMs,
             timeoutMs: budget.timeoutMs,
-            signal:
-              Number.isFinite(budget.timeoutMs) && budget.timeoutMs > 0
-                ? AbortSignal.timeout(Math.max(1, budget.timeoutMs))
-                : undefined,
+            signal: timeoutSignal(budget.timeoutMs),
           });
         } finally {
           clearTimeout(slowTimer);
@@ -516,6 +564,7 @@ export function createAgent(deps) {
         });
       } catch (error) {
         lastError = error;
+        abortReason = String(/** @type {any} */ (error)?.message ?? error);
 
         // The provider confirmed a context overflow: compact and retry this same turn.
         if (/** @type {any} */ (error)?.code === LLM_ERROR.CONTEXT_WINDOW_EXCEEDED && !overflowRecovered) {
@@ -550,6 +599,10 @@ export function createAgent(deps) {
         }
       }
 
+      if (response) {
+        answeredBy = { model: target.model, alias: target.alias, provider: target.provider };
+      }
+
       // Last-resort fallback with a DIFFERENT model: drop tools so we still get an answer.
       // `flushed` = the head was already sent to the user; calling fallback now would duplicate content.
       if (!response && !flushed) {
@@ -569,15 +622,19 @@ export function createAgent(deps) {
             providerLimit > 0 ? (timeLeft > 0 ? Math.min(providerLimit, timeLeft) : providerLimit) : timeLeft;
           try {
             response = await llm.chatWith(fallbackAlias, {
-              messages,
+              messages: fallbackMessages(messages),
               reasoning: 'none',
-              temperature: config.ai.temperature,
               maxTokens: config.ai.maxTokens,
               stream: false,
               timeoutMs: fallbackTimeout,
-              signal: Number.isFinite(left) ? AbortSignal.timeout(left) : undefined,
+              signal: timeoutSignal(left),
             });
             llmMs += Date.now() - fallbackStarted;
+            answeredBy = {
+              model: fallbackEntry?.model ?? fallbackAlias,
+              alias: fallbackAlias,
+              provider: fallbackEntry?.provider ?? target.provider,
+            };
             metrics.inc('llm.fallback');
             logger.warn('llm fallback (no tools) succeeded', {
               chatId: event.chatId,
@@ -587,6 +644,7 @@ export function createAgent(deps) {
           } catch (error) {
             llmMs += Date.now() - fallbackStarted;
             lastError = error;
+            abortReason = String(/** @type {any} */ (error)?.message ?? error);
           }
         } else if (!fallbackAlias) {
           logger.debug('fallback skipped: no other model available', {
@@ -667,7 +725,51 @@ export function createAgent(deps) {
 
       finalText = response.content ?? '';
       aborted = Boolean(response.aborted);
+      if (response.aborted) abortReason = response.streamError || 'stream interrupted';
       break;
+    }
+
+    // All tool rounds used: force one final answer without tools so fetched data is not lost.
+    if (!finalText.trim() && !aborted && messages.some((message) => message.role === 'tool')) {
+      const left = deadline - Date.now();
+      if (!Number.isFinite(left) || left >= 1500) {
+        const budget = planAttemptBudget({
+          remainingMs: left,
+          attempt: 1,
+          maxAttempts: 1,
+          streaming: false,
+          aiTimeoutMs: providerTimeout(target.provider),
+        });
+        const started = Date.now();
+        try {
+          const response = await llm.chat({
+            record,
+            messages: [
+              ...fallbackMessages(messages),
+              { role: 'user', content: 'Answer the user now using the tool results above. Do not call any tools.' },
+            ],
+            reasoning: 'none',
+            maxTokens: config.ai.maxTokens,
+            stream: false,
+            ttftMs: 0,
+            timeoutMs: budget.timeoutMs,
+            signal: timeoutSignal(budget.timeoutMs),
+          });
+          llmMs += Date.now() - started;
+          completionMs += Number(response?.completionMs ?? response?.latencyMs ?? 0) || 0;
+          completionTokens += Number(response?.completionTokens ?? response?.usage?.completion_tokens ?? 0) || 0;
+          if (typeof response?.content === 'string') finalText = response.content;
+          answeredBy = { model: target.model, alias: target.alias, provider: target.provider };
+        } catch (error) {
+          llmMs += Date.now() - started;
+          abortReason = String(/** @type {any} */ (error)?.message ?? error);
+          logger.warn('final answer after tool rounds failed', {
+            chatId: event.chatId,
+            error: abortReason,
+            icon: '🧩',
+          });
+        }
+      }
     }
 
     await sender.wait();
@@ -693,20 +795,21 @@ export function createAgent(deps) {
       completionTokens > 0 && completionMs > 0
         ? Math.round((completionTokens / (completionMs / 1000)) * 10) / 10
         : 0;
+    const attribution = answeredBy ?? { model: target.model, alias: target.alias, provider: target.provider };
     metrics.observe('agent.reply', duration);
     metrics.inc('messages.replied');
     if (thinkingText && config.logThinking !== false) {
       logger.info(`🧠 thinking: ${preview(thinkingText, 2000)}`, {
         chatId: event.chatId,
-        model: target.model,
+        model: attribution.model,
         ...(reasoningTokens > 0 ? { tokens: reasoningTokens } : {}),
       });
     }
-    logger.info(`✅ replied · ${target.model} · ${tps || 0} tok/s`, {
+    logger.info(`✅ replied · ${attribution.model} · ${tps || 0} tok/s`, {
       chatId: event.chatId,
-      model: target.model,
-      alias: target.alias,
-      provider: target.provider,
+      model: attribution.model,
+      alias: attribution.alias,
+      provider: attribution.provider,
       tps,
       tokens: completionTokens,
       ms: duration,
@@ -720,7 +823,12 @@ export function createAgent(deps) {
     });
 
     if (aborted) {
-      logger.warn('reply aborted by deadline', { chatId: event.chatId, partial: finalText.length, icon: '⏱️' });
+      logger.warn('reply aborted', {
+        chatId: event.chatId,
+        partial: finalText.length,
+        reason: abortReason || 'deadline',
+        icon: '⏱️',
+      });
     }
   }
 
@@ -767,7 +875,7 @@ export function createAgent(deps) {
         store.touch(event.chatId);
       }
 
-      if (rateLimited(event.senderId)) {
+      if (rateLimited(event.chatId, event.senderId)) {
         metrics.inc('messages.rateLimited');
         logger.warn('sender rate limited, ignoring', {
           chatId: event.chatId,
@@ -785,8 +893,13 @@ export function createAgent(deps) {
       }
       if (event.kind === 'sticker') {
         if (config.sticker.enabled && stickers) {
+          // STICKER_ECHO=off means "do not react to incoming stickers" — not "send a random one".
+          if (!config.sticker.echo) {
+            await stopTyping();
+            return;
+          }
           const isId = /^[a-f0-9]{20}$/i.test(event.sticker ?? '');
-          const stickerId = config.sticker.echo && isId ? event.sticker : stickers.random()?.id;
+          const stickerId = isId ? event.sticker : stickers.random()?.id;
           await stopTyping();
           if (stickerId) {
             try {

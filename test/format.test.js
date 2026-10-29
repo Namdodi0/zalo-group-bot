@@ -15,6 +15,8 @@ test('stripMention removes the bot name at every position', () => {
   assert.equal(stripMention('hi @Bot deepseek there', ['Bot deepseek']), 'hi there');
   assert.equal(stripMention('Bot deepseek: /help', ['Bot deepseek']), '/help');
   assert.equal(stripMention('no mention here', ['Bot deepseek']), 'no mention here');
+  // a bot name that is only a prefix of a longer word must not be stripped
+  assert.equal(stripMention('@Anh ơi cho hỏi', ['An']), '@Anh ơi cho hỏi');
   // a bot name without '@' mid-sentence or at the start with content after it is NOT cut
   assert.equal(stripMention('Bot deepseek is what?', ['Bot deepseek']), 'Bot deepseek is what?');
 });

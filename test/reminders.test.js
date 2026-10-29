@@ -13,7 +13,7 @@ test('parseReminderArgs: relative durations', () => {
   assert.equal(parseReminderArgs('+10m uống nước', NOW).at, NOW + 600_000);
   assert.equal(parseReminderArgs('+2h họp', NOW).at, NOW + 7_200_000);
   assert.equal(parseReminderArgs('+1d nộp bài', NOW).at, NOW + 86_400_000);
-  assert.match(String(parseReminderArgs('+0m x', NOW).error), /tương lai/);
+  assert.match(String(parseReminderArgs('+0m x', NOW).error), /future/);
 });
 
 test('parseReminderArgs: clock time, tomorrow and dd/mm in Vietnam time', () => {
@@ -24,6 +24,7 @@ test('parseReminderArgs: clock time, tomorrow and dd/mm in Vietnam time', () => 
   // 08:00 already passed at 17:00 → tomorrow.
   assert.equal(parseReminderArgs('08:00 tập thể dục', NOW).at, Date.UTC(2026, 9, 29, 1, 0, 0));
   assert.equal(parseReminderArgs('08:00 mai tập thể dục', NOW).at, Date.UTC(2026, 9, 29, 1, 0, 0));
+  assert.equal(parseReminderArgs('08:00 tomorrow gym', NOW).at, Date.UTC(2026, 9, 29, 1, 0, 0));
   assert.equal(parseReminderArgs('08:00 mốt tập thể dục', NOW).at, Date.UTC(2026, 9, 30, 1, 0, 0));
 
   const dated = parseReminderArgs('09:30 05/11 gặp khách', NOW);
@@ -33,10 +34,11 @@ test('parseReminderArgs: clock time, tomorrow and dd/mm in Vietnam time', () => 
 
 test('parseReminderArgs: rejects bad input', () => {
   assert.match(String(parseReminderArgs('', NOW).error), /Usage/);
-  assert.match(String(parseReminderArgs('25:00 x', NOW).error), /Giờ/);
-  assert.match(String(parseReminderArgs('20:00', NOW).error), /Thiếu nội dung/);
-  assert.match(String(parseReminderArgs('wat', NOW).error), /Không hiểu/);
-  assert.match(String(parseReminderArgs('+40d x', NOW).error), /30 ngày/);
+  assert.match(String(parseReminderArgs('25:00 x', NOW).error), /Invalid time/);
+  assert.match(String(parseReminderArgs('20:00', NOW).error), /Missing reminder text/);
+  assert.match(String(parseReminderArgs('wat', NOW).error), /Could not understand/);
+  assert.match(String(parseReminderArgs('+40d x', NOW).error), /30 days/);
+  assert.match(String(parseReminderArgs('20:00 31/02 x', NOW).error), /Invalid date/);
 });
 
 test('createReminderStore: caps per chat, delivers due items, persists', async () => {
@@ -64,7 +66,7 @@ test('createReminderStore: caps per chat, delivers due items, persists', async (
   nowMs = NOW + 11_500;
   assert.equal(await store.tick(), 2);
   assert.equal(sent.length, 2);
-  assert.match(sent[0].text, /⏰ Nhắc: r0/);
+  assert.match(sent[0].text, /⏰ Reminder: r0/);
   assert.equal(store.list('g1').length, 3);
 
   const reloaded = createReminderStore({ file, now: () => nowMs, send: async () => {}, logger: createSilentLogger() });
@@ -74,6 +76,26 @@ test('createReminderStore: caps per chat, delivers due items, persists', async (
   const removed = await reloaded.remove('g1', '3');
   assert.ok(removed);
   assert.equal(reloaded.list('g1').length, 2);
+});
+
+test('createReminderStore: overlapping ticks deliver each reminder once', async () => {
+  let nowMs = NOW;
+  /** @type {string[]} */
+  const sent = [];
+  const store = createReminderStore({
+    now: () => nowMs,
+    send: async (_chatId, text) => {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      sent.push(text);
+    },
+    logger: createSilentLogger(),
+  });
+  await store.add({ chatId: 'g1', text: 'a', at: NOW + 1000 });
+  await store.add({ chatId: 'g1', text: 'b', at: NOW + 1000 });
+  nowMs = NOW + 2000;
+
+  await Promise.all([store.tick(), store.tick()]);
+  assert.deepEqual(sent.sort(), ['⏰ Reminder: a', '⏰ Reminder: b']);
 });
 
 test('createReminderStore: a failing send is retried and then dropped', async () => {

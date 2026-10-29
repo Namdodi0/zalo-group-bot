@@ -67,6 +67,32 @@ test('the image tool stops once the deadline passes', async () => {
   assert.match(result.text, /Ran out of time/);
 });
 
+test('send_image tries the next candidate when Zalo rejects the first URL', async () => {
+  /** @type {string[]} */
+  const attempted = [];
+  const zalo = {
+    sendPhoto: async (_chatId, url) => {
+      attempted.push(url);
+      if (url.endsWith('a.png')) throw new Error('rejected by Zalo');
+      return { ok: true };
+    },
+    sendSticker: async () => ({ ok: true }),
+  };
+  const tools = createToolRuntime({
+    config: baseConfig(),
+    tavily: { search: async () => ({ results: [], images: ['https://x/a.png', 'https://x/b.png'] }) },
+    zalo,
+    validator: { validate: async () => ({ ok: true }) },
+    stickers: fakeStickers,
+    logger: silentLogger,
+    metrics: { inc() {}, observe() {} },
+  });
+
+  const result = await tools.run('send_image', { query: 'cat' }, { chatId: 'c1' });
+  assert.equal(result.ok, true);
+  assert.deepEqual(attempted, ['https://x/a.png', 'https://x/b.png']);
+});
+
 test('send_sticker is in definitions when enabled and sends the right id', async () => {
   const { tools, zalo } = runtime(baseConfig(), fakeStickers);
   const names = tools.definitions().map((tool) => tool.function.name);

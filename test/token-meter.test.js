@@ -22,6 +22,16 @@ test('pressure is computed from the context window', () => {
   assert.ok(result.pressure > 0);
 });
 
+test('tool-call arguments count toward the message estimate', () => {
+  const meter = createTokenMeter({ calibrator: { estimate: (raw) => raw, observe: () => {}, ratio: () => 1 } });
+  const plain = meter.message({ text: '' });
+  const withCall = meter.message({
+    text: '',
+    toolCalls: [{ name: 'web_search', rawArguments: '{"query":"a fairly long search query"}' }],
+  });
+  assert.ok(withCall > plain);
+});
+
 test('observe adjusts the estimate ratio', () => {
   const meter = createTokenMeter();
   assert.equal(meter.ratio(), 1);

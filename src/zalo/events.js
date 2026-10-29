@@ -86,23 +86,22 @@ export function toEvent(item) {
   const message = result.message ?? result;
   const chat = message.chat ?? {};
   const from = message.from ?? {};
-  const chatId = asString(chat.id) || asString(from.id);
+  const fromId = asString(from.id);
+  const chatId = asString(chat.id) || fromId;
   if (!chatId) return null;
 
   const eventName = asString(result.event_name ?? row.event_name);
   const kind = KIND_BY_EVENT[eventName] ?? 'unknown';
   const chatTypeRaw = asString(chat.chat_type ?? chat.type);
-  const chatType = chatTypeRaw
-    ? chatTypeRaw.toUpperCase()
-    : chatId === asString(from.id)
-      ? 'PRIVATE'
-      : 'UNKNOWN';
+  // A missing chat_type is common in some payloads: sender === chat means private,
+  // anything else is a group (the bot itself is a group bot).
+  const chatType = chatTypeRaw ? chatTypeRaw.toUpperCase() : chatId === fromId ? 'PRIVATE' : 'GROUP';
 
   return {
     kind: /** @type {any} */ (kind),
     chatId,
     chatType,
-    senderId: asString(from.id),
+    senderId: fromId,
     senderName: asString(from.display_name) || asString(from.name) || 'Member',
     isBot: from.is_bot === true,
     text: asString(message.text) || asString(message.caption),

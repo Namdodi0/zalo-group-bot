@@ -84,6 +84,29 @@ function readInt(env, key, fallback, bounds = {}) {
   return value;
 }
 
+/**
+ * @param {Record<string, unknown>} env
+ * @param {string} key
+ * @param {number} fallback
+ * @param {{min?:number,max?:number}} [bounds]
+ * @returns {number}
+ */
+function readNumber(env, key, fallback, bounds = {}) {
+  const raw = readStr(env, key);
+  if (!raw) return fallback;
+  const value = Number(raw);
+  if (!Number.isFinite(value)) {
+    throw new ConfigError(`${key} must be a number (got: "${raw}")`);
+  }
+  if (bounds.min !== undefined && value < bounds.min) {
+    throw new ConfigError(`${key} must be >= ${bounds.min} (got: ${value})`);
+  }
+  if (bounds.max !== undefined && value > bounds.max) {
+    throw new ConfigError(`${key} must be <= ${bounds.max} (got: ${value})`);
+  }
+  return value;
+}
+
 /** @param {Record<string, unknown>} env @param {string} key */
 function readList(env, key) {
   return readStr(env, key)
@@ -320,7 +343,7 @@ export function loadConfig(input = {}) {
       model: readStr(env, 'NIM_MODEL', 'nvidia/nemotron-3.5-super-vl-120b-a12b'),
       ultraModel: readStr(env, 'NIM_ULTRA_MODEL', 'nvidia/nemotron-3-ultra-550b-a55b'),
       fallbackModel: readStr(env, 'NIM_FALLBACK_MODEL', 'nvidia/nemotron-3.5-lightning-30b-a3b'),
-      temperature: Number(readStr(env, 'NIM_TEMPERATURE', '0.6')) || 0.6,
+      temperature: readNumber(env, 'NIM_TEMPERATURE', 0.6, { min: 0, max: 2 }),
       // 0 = no request timeout (wait for the provider as long as it needs).
       timeoutMs: /** @type {number} */ (readInt(env, 'NIM_TIMEOUT_MS', 0, { min: 0 })),
     },
@@ -329,7 +352,7 @@ export function loadConfig(input = {}) {
       baseUrl: readStr(env, 'DEEPSEEK_BASE_URL', 'https://api.deepseek.com').replace(/\/+$/, ''),
       model: readStr(env, 'DEEPSEEK_MODEL', 'deepseek-flash'),
       proModel: readStr(env, 'DEEPSEEK_PRO_MODEL', 'deepseek-v4-pro'),
-      temperature: Number(readStr(env, 'DEEPSEEK_TEMPERATURE', '0.6')) || 0.6,
+      temperature: readNumber(env, 'DEEPSEEK_TEMPERATURE', 0.6, { min: 0, max: 2 }),
       timeoutMs: /** @type {number} */ (readInt(env, 'DEEPSEEK_TIMEOUT_MS', 0, { min: 0 })),
     },
     model: {
@@ -339,7 +362,6 @@ export function loadConfig(input = {}) {
     ai: {
       reasoning: /** @type {ReasoningMode} */ (reasoning),
       maxTokens,
-      temperature: Number(readStr(env, 'NIM_TEMPERATURE', '0.6')) || 0.6,
       timeoutMs: /** @type {number} */ (readInt(env, 'NIM_TIMEOUT_MS', 0, { min: 0 })),
     },
     // 0 = no deadline (the bot waits until the provider answers).

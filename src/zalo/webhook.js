@@ -50,7 +50,7 @@ export function createWebhookServer(options) {
     }
 
     const secret = String(req.headers['x-bot-api-secret-token'] ?? '');
-    if (!safeEqual(secret, config.webhook.secret)) {
+    if (!config.webhook.secret || !safeEqual(secret, config.webhook.secret)) {
       logger.warn('webhook rejected: bad secret', { ip: req.socket.remoteAddress });
       metrics?.inc('webhook.rejected');
       res.writeHead(403, { 'Content-Type': 'application/json' });

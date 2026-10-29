@@ -6,6 +6,8 @@ import { makeConfig, silentLogger } from '../test-utils/helpers.js';
 
 test('parseCommand recognizes commands and arguments', () => {
   assert.deepEqual(parseCommand('/help'), { name: 'help', args: '' });
+  assert.deepEqual(parseCommand('/help@Bot'), { name: 'help', args: '' });
+  assert.deepEqual(parseCommand('/search@Bot gold price'), { name: 'search', args: 'gold price' });
   assert.deepEqual(parseCommand('/search gold price today'), { name: 'search', args: 'gold price today' });
   assert.equal(parseCommand('hello'), null);
   assert.equal(parseCommand('/'), null);
@@ -254,14 +256,14 @@ test('/remember stores a fact and /forget removes it', async () => {
   const context = ctx(d);
 
   let result = await commands.run({ name: 'remember', args: 'Tên tôi là Nam' }, context);
-  assert.match(result.text, /Đã ghi nhớ/);
+  assert.match(result.text, /Remembered/);
   assert.equal(context.record.meta.facts.length, 1);
 
   result = await commands.run({ name: 'remember', args: 'Tên tôi là Nam' }, context);
-  assert.match(result.text, /đã được ghi nhớ/);
+  assert.match(result.text, /already remember/);
 
   result = await commands.run({ name: 'forget', args: '1' }, context);
-  assert.match(result.text, /Đã quên/);
+  assert.match(result.text, /Forgot:/);
   assert.equal(context.record.meta.facts.length, 0);
 });
 
@@ -279,7 +281,7 @@ test('/remind parses the time and stores a reminder', async () => {
   };
   const commands = createCommands(d);
   const result = await commands.run({ name: 'remind', args: '+10m uống nước' }, ctx(d));
-  assert.match(result.text, /Đã đặt nhắc #7/);
+  assert.match(result.text, /Reminder #7 set/);
   assert.equal(added[0].text, 'uống nước');
   assert.ok(added[0].at > Date.now());
 });
@@ -296,7 +298,7 @@ test('/remind lists and removes reminders', async () => {
   let result = await commands.run({ name: 'remind', args: 'list' }, ctx(d));
   assert.match(result.text, /họp/);
   result = await commands.run({ name: 'remind', args: 'remove 1' }, ctx(d));
-  assert.match(result.text, /Đã xoá nhắc #1/);
+  assert.match(result.text, /Removed reminder #1/);
 });
 
 test('/summary summarizes the last N turn messages', async () => {
@@ -304,7 +306,7 @@ test('/summary summarizes the last N turn messages', async () => {
   let received = null;
   d.models.chat = async (input) => {
     received = input;
-    return { content: 'Tóm tắt nội dung' };
+    return { content: 'Summary content' };
   };
   const commands = createCommands(d);
   const record = {
@@ -318,8 +320,8 @@ test('/summary summarizes the last N turn messages', async () => {
     meta: { thinking: null },
   };
   const result = await commands.run({ name: 'summary', args: '2' }, ctx(d, { record }));
-  assert.match(result.text, /Tóm tắt 2 tin/);
-  assert.match(result.text, /Tóm tắt nội dung/);
+  assert.match(result.text, /Summary of the last 2 messages/);
+  assert.match(result.text, /Summary content/);
   const joined = received.messages.map((message) => message.content).join('\n');
   assert.match(joined, /a/);
   assert.match(joined, /c/);
@@ -334,5 +336,5 @@ test('/summary validates the count and the history', async () => {
   let result = await commands.run({ name: 'summary', args: 'abc' }, ctx(d));
   assert.match(result.text, /2–200/);
   result = await commands.run({ name: 'summary', args: '' }, ctx(d));
-  assert.match(result.text, /Chưa đủ tin nhắn/);
+  assert.match(result.text, /Not enough messages/);
 });

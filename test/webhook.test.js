@@ -66,3 +66,25 @@ test('webhook: secret, broken JSON, event dispatch, query string', async () => {
     await server.stop();
   }
 });
+
+test('webhook rejects everything when the configured secret is empty', async () => {
+  const config = makeConfig();
+  config.webhook = { ...config.webhook, host: '127.0.0.1', port: 0, secret: '' };
+  const server = createWebhookServer({
+    config,
+    logger: silentLogger,
+    metrics: createMetrics(),
+    onEvent: () => {},
+  });
+  const info = await server.start();
+  try {
+    const response = await fetch(`http://127.0.0.1:${info.port}${config.webhook.path}`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-bot-api-secret-token': '' },
+      body: '{}',
+    });
+    assert.equal(response.status, 403);
+  } finally {
+    await server.stop();
+  }
+});

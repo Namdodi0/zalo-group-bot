@@ -65,6 +65,14 @@ test('private chat inferred from chat.id === from.id', () => {
   assert.equal(event?.chatType, 'PRIVATE');
 });
 
+test('group chat inferred when chat_type is missing and chat.id !== from.id', () => {
+  const event = toEvent({
+    event_name: 'message.text.received',
+    message: { from: { id: 'u9', display_name: 'An' }, chat: { id: 'g1' }, text: 'hi', message_id: 'm10' },
+  });
+  assert.equal(event?.chatType, 'GROUP');
+});
+
 test('ignores payloads without a chat id', () => {
   assert.equal(toEvent({ event_name: 'message.text.received', message: { text: 'x' } }), null);
   assert.deepEqual(normalizeUpdates({ ok: true }), []);
