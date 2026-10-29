@@ -717,6 +717,20 @@ test('the agent leaves temperature to the provider adapter', async () => {
   assert.equal('temperature' in nimCalls[0], false);
 });
 
+test('passes the configured sampling parameters to the LLM', async () => {
+  const { agent, nimCalls } = await setup({
+    configOverrides: {
+      deepseek: { topP: 0.9, frequencyPenalty: 0.2, presencePenalty: 0.3 },
+    },
+  });
+  await agent.handle(textEvent('hi'));
+  assert.deepEqual(nimCalls[0].sampling, {
+    topP: 0.9,
+    frequencyPenalty: 0.2,
+    presencePenalty: 0.3,
+  });
+});
+
 test('the sender rate limit is scoped per chat', async () => {
   const { agent, nimCalls } = await setup({ configOverrides: { userRateLimitPerMinute: 1 } });
   await agent.handle(textEvent('one', { messageId: 'rl-1', chatId: 'chat-1' }));

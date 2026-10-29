@@ -36,8 +36,13 @@ test('defaults: DeepSeek primary, reasoning off, unlimited context', () => {
   assert.equal(config.context.maxCharsPerMessage, 12_000);
   assert.equal(config.search.cacheTtlMs, 600_000);
   assert.equal(config.maxQueueDepth, 50);
-  assert.equal(config.nim.temperature, 0.6);
-  assert.equal(config.deepseek.temperature, 0.6);
+  assert.equal(config.nim.temperature, 1.2);
+  assert.equal(config.deepseek.temperature, 1.2);
+  assert.equal(config.nim.topP, 1);
+  assert.equal(config.nim.frequencyPenalty, 0.3);
+  assert.equal(config.nim.presencePenalty, 0.5);
+  assert.equal(config.deepseek.frequencyPenalty, 0.2);
+  assert.equal(config.deepseek.presencePenalty, 0.4);
   assert.equal(config.configFile, null);
   assert.equal(config.configFileFound, true);
 });
@@ -158,6 +163,38 @@ test('per-provider temperatures accept 0 and reject invalid values', () => {
 
   assert.throws(() => load({ nim: { temperature: 'hot' } }), /config\.nim\.temperature/);
   assert.throws(() => load({ deepseek: { temperature: 3 } }), /config\.deepseek\.temperature/);
+});
+
+test('sampling parameters are loaded and validated', () => {
+  const config = load({
+    nim: {
+      topP: 0.98,
+      topK: -1,
+      minP: 0.02,
+      repetitionPenalty: 1.05,
+      frequencyPenalty: 0.3,
+      presencePenalty: 0.4,
+      seed: 42,
+    },
+    deepseek: { topP: 0.9, frequencyPenalty: 0.1, presencePenalty: 0.2, seed: 7 },
+  });
+  assert.equal(config.nim.topP, 0.98);
+  assert.equal(config.nim.topK, -1);
+  assert.equal(config.nim.minP, 0.02);
+  assert.equal(config.nim.repetitionPenalty, 1.05);
+  assert.equal(config.nim.frequencyPenalty, 0.3);
+  assert.equal(config.nim.presencePenalty, 0.4);
+  assert.equal(config.nim.seed, 42);
+  assert.equal(config.deepseek.topP, 0.9);
+  assert.equal(config.deepseek.frequencyPenalty, 0.1);
+  assert.equal(config.deepseek.presencePenalty, 0.2);
+  assert.equal(config.deepseek.seed, 7);
+
+  assert.throws(() => load({ nim: { topP: 0 } }), /config\.nim\.topP/);
+  assert.throws(() => load({ nim: { topK: -2 } }), /config\.nim\.topK/);
+  assert.throws(() => load({ nim: { repetitionPenalty: 0 } }), /config\.nim\.repetitionPenalty/);
+  assert.throws(() => load({ nim: { presencePenalty: 3 } }), /config\.nim\.presencePenalty/);
+  assert.throws(() => load({ deepseek: { topP: 1.2 } }), /config\.deepseek\.topP/);
 });
 
 test('the webhook secret is generated once and kept across restarts', async () => {

@@ -150,6 +150,31 @@ export function createAgent(deps) {
     return Number.isFinite(value) && value > 0 ? value : 0;
   }
 
+  const SAMPLING_KEYS = [
+    'topP',
+    'topK',
+    'minP',
+    'repetitionPenalty',
+    'frequencyPenalty',
+    'presencePenalty',
+    'seed',
+  ];
+
+  /**
+   * Sampling parameters configured for a provider. Only non-null values are sent, so an
+   * unset parameter leaves the provider default untouched.
+   * @param {string} provider
+   */
+  function samplingFor(provider) {
+    /** @type {Record<string, number>} */
+    const sampling = {};
+    for (const key of SAMPLING_KEYS) {
+      const value = config?.[provider]?.[key];
+      if (value !== undefined && value !== null) sampling[key] = value;
+    }
+    return sampling;
+  }
+
   /** @type {Map<string, number>} */
   const seen = new Map();
   /** @type {Map<string, number[]>} */
@@ -535,6 +560,7 @@ export function createAgent(deps) {
             tools: toolDefs.length ? toolDefs : undefined,
             reasoning,
             maxTokens: config.ai.maxTokens,
+            sampling: samplingFor(target.provider),
             stream: streaming,
             onDelta,
             ttftMs: budget.ttftMs,
@@ -625,6 +651,7 @@ export function createAgent(deps) {
               messages: fallbackMessages(messages),
               reasoning: 'none',
               maxTokens: config.ai.maxTokens,
+              sampling: samplingFor(fallbackEntry?.provider ?? target.provider),
               stream: false,
               timeoutMs: fallbackTimeout,
               signal: timeoutSignal(left),
@@ -750,6 +777,7 @@ export function createAgent(deps) {
             ],
             reasoning: 'none',
             maxTokens: config.ai.maxTokens,
+            sampling: samplingFor(target.provider),
             stream: false,
             ttftMs: 0,
             timeoutMs: budget.timeoutMs,

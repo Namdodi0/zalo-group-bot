@@ -174,6 +174,18 @@ function asNumber(value, key, fallback, bounds = {}) {
   return number;
 }
 
+/** @param {unknown} value @param {string} key @param {{min?:number,max?:number}} [bounds] */
+function asOptionalNumber(value, key, bounds = {}) {
+  if (value === undefined || value === null || value === '') return null;
+  return asNumber(value, key, 0, bounds);
+}
+
+/** @param {unknown} value @param {string} key @param {{min?:number,max?:number}} [bounds] */
+function asOptionalInt(value, key, bounds = {}) {
+  if (value === undefined || value === null || value === '') return null;
+  return asInt(value, key, 0, bounds);
+}
+
 /** @param {unknown} value @param {string} key */
 function asStringList(value, key) {
   if (value === undefined || value === null) return [];
@@ -481,6 +493,36 @@ export function loadConfig(input = {}) {
     throw new ConfigError(`config.tone must be friendly, roast, roast-hard or roast-extreme (got: "${toneRaw}")`);
   }
 
+  const nimTopP = asOptionalNumber(nimSection.topP, 'config.nim.topP', { min: 0, max: 1 }) ?? 1.0;
+  if (nimTopP !== null && nimTopP <= 0) {
+    throw new ConfigError('config.nim.topP must be within (0, 1]');
+  }
+  const nimTopK = asOptionalInt(nimSection.topK, 'config.nim.topK', { min: -1 });
+  const nimMinP = asOptionalNumber(nimSection.minP, 'config.nim.minP', { min: 0, max: 1 });
+  const nimRepetitionPenalty = asOptionalNumber(nimSection.repetitionPenalty, 'config.nim.repetitionPenalty', {
+    min: 0,
+    max: 2,
+  });
+  if (nimRepetitionPenalty !== null && nimRepetitionPenalty <= 0) {
+    throw new ConfigError('config.nim.repetitionPenalty must be within (0, 2]');
+  }
+  const nimFrequencyPenalty =
+    asOptionalNumber(nimSection.frequencyPenalty, 'config.nim.frequencyPenalty', { min: -2, max: 2 }) ?? 0.3;
+  const nimPresencePenalty =
+    asOptionalNumber(nimSection.presencePenalty, 'config.nim.presencePenalty', { min: -2, max: 2 }) ?? 0.5;
+  const nimSeed = asOptionalInt(nimSection.seed, 'config.nim.seed', { min: 0 });
+
+  const deepseekTopP =
+    asOptionalNumber(deepseekSection.topP, 'config.deepseek.topP', { min: 0, max: 1 }) ?? 1.0;
+  if (deepseekTopP !== null && deepseekTopP <= 0) {
+    throw new ConfigError('config.deepseek.topP must be within (0, 1]');
+  }
+  const deepseekFrequencyPenalty =
+    asOptionalNumber(deepseekSection.frequencyPenalty, 'config.deepseek.frequencyPenalty', { min: -2, max: 2 }) ?? 0.2;
+  const deepseekPresencePenalty =
+    asOptionalNumber(deepseekSection.presencePenalty, 'config.deepseek.presencePenalty', { min: -2, max: 2 }) ?? 0.4;
+  const deepseekSeed = asOptionalInt(deepseekSection.seed, 'config.deepseek.seed', { min: 0 });
+
   const config = {
     help: false,
     version: VERSION,
@@ -511,17 +553,28 @@ export function loadConfig(input = {}) {
       model: asString(nimSection.model, 'config.nim.model', 'nvidia/nemotron-3.5-super-vl-120b-a12b'),
       ultraModel: asString(nimSection.ultraModel, 'config.nim.ultraModel', 'nvidia/nemotron-3-ultra-550b-a55b'),
       fallbackModel: asString(nimSection.fallbackModel, 'config.nim.fallbackModel', 'nvidia/nemotron-3.5-lightning-30b-a3b'),
-      temperature: asNumber(nimSection.temperature, 'config.nim.temperature', 0.6, { min: 0, max: 2 }),
+      temperature: asNumber(nimSection.temperature, 'config.nim.temperature', 1.2, { min: 0, max: 2 }),
       // 0 = no request timeout (wait for the provider as long as it needs).
       timeoutMs: /** @type {number} */ (asInt(nimSection.timeoutMs, 'config.nim.timeoutMs', 0, { min: 0 })),
+      topP: nimTopP,
+      topK: nimTopK,
+      minP: nimMinP,
+      repetitionPenalty: nimRepetitionPenalty,
+      frequencyPenalty: nimFrequencyPenalty,
+      presencePenalty: nimPresencePenalty,
+      seed: nimSeed,
     },
     deepseek: {
       apiKey: deepseekKey,
       baseUrl: asString(deepseekSection.baseUrl, 'config.deepseek.baseUrl', 'https://api.deepseek.com').replace(/\/+$/, ''),
       model: asString(deepseekSection.model, 'config.deepseek.model', 'deepseek-flash'),
       proModel: asString(deepseekSection.proModel, 'config.deepseek.proModel', 'deepseek-v4-pro'),
-      temperature: asNumber(deepseekSection.temperature, 'config.deepseek.temperature', 0.6, { min: 0, max: 2 }),
+      temperature: asNumber(deepseekSection.temperature, 'config.deepseek.temperature', 1.2, { min: 0, max: 2 }),
       timeoutMs: /** @type {number} */ (asInt(deepseekSection.timeoutMs, 'config.deepseek.timeoutMs', 0, { min: 0 })),
+      topP: deepseekTopP,
+      frequencyPenalty: deepseekFrequencyPenalty,
+      presencePenalty: deepseekPresencePenalty,
+      seed: deepseekSeed,
     },
     model: {
       defaultAlias,

@@ -186,8 +186,8 @@ Main `config.json` groups:
 
 - **Zalo / transport**: `mode` (`polling|webhook`), `zalo.botId`, `zalo.baseUrl`, `zalo.parseMode`, `allowedChatIds`, `adminIds`, `webhook.port`, `webhook.host`, `webhook.path`, `webhook.secret` (optional, ≥ 8 chars; empty = auto-generated), `webhook.publicUrl`.
 - **Models**: `model.defaultAlias` (`deepseek|pro|nim|ultra|nim-light`), `model.fallbackAlias`, `ai.reasoning` (`none|low|medium|high|auto`), `ai.maxTokens` (`null`/`0` = unlimited), `responseTimeoutMs` (`0` = no deadline).
-- **DeepSeek**: `deepseek.baseUrl`, `deepseek.model`, `deepseek.proModel`, `deepseek.temperature` (0–2), `deepseek.timeoutMs` (`0` = no limit).
-- **NIM**: `nim.baseUrl`, `nim.model`, `nim.ultraModel`, `nim.fallbackModel`, `nim.temperature` (0–2), `nim.timeoutMs` (`0` = no limit).
+- **DeepSeek**: `deepseek.baseUrl`, `deepseek.model`, `deepseek.proModel`, `deepseek.temperature` (0–2), `deepseek.timeoutMs` (`0` = no limit), `deepseek.topP`, `deepseek.frequencyPenalty`, `deepseek.presencePenalty`, `deepseek.seed`.
+- **NIM**: `nim.baseUrl`, `nim.model`, `nim.ultraModel`, `nim.fallbackModel`, `nim.temperature` (0–2), `nim.timeoutMs` (`0` = no limit), `nim.topP`, `nim.topK`, `nim.minP`, `nim.repetitionPenalty`, `nim.frequencyPenalty`, `nim.presencePenalty`, `nim.seed` (only non-null values are sent).
 - **Context**: `context.maxTokens` (**0 = unlimited**), `context.maxMessages` (**0**), `context.maxCharsPerMessage` (default `12000`, **0 = no truncation**), `context.ttlHours` (**0 = never delete**), `context.summary`, `dataDir` (relative → repo root; use a persistent volume, never `/tmp`).
 - **Compaction**: `context.modelWindow` (**0 = unknown; compact only on provider overflow**), `context.compactThreshold` (`0.8`), `context.keepRecent` (`8`), `context.summaryMaxChars` (`1200`), `context.toolResultKeepChars` (`600`).
 - **Tavily**: `search.enabled`, `search.auto` (**false = the model never searches on its own; `/search` still works**), `search.depth` (`fast|basic|advanced|ultra-fast`), `search.maxResults`, `search.country`, `search.cacheTtlMs` (`0` = no cache).
@@ -195,6 +195,34 @@ Main `config.json` groups:
 - **Log / ops**: `logLevel`, `logThinking`, `logFormat` (`pretty|json`), `logColor` (`auto|always|never`), `opsPort` (`null` = disabled).
 
 CLI flags: `--config <path> --model <alias> --mode --think --max-tokens --progressive --no-progressive --no-search --no-typing --dry-run --once --verbose --json --help`.
+
+### Creative sampling (default)
+
+The defaults are already a high-creativity preset; `config.json` can override any value.
+This is the effective default (and the block to use on a host whose `config.json` was
+created from an older example):
+
+```json
+{
+  "nim": {
+    "temperature": 1.2,
+    "topP": 1.0,
+    "frequencyPenalty": 0.3,
+    "presencePenalty": 0.5
+  },
+  "deepseek": {
+    "temperature": 1.2,
+    "topP": 1.0,
+    "frequencyPenalty": 0.2,
+    "presencePenalty": 0.4
+  }
+}
+```
+
+- Temperatures above ~1.3 start trading coherence for randomness; 1.1–1.2 is usually the sweet spot.
+- `topK: -1`, `minP: 0`, `repetitionPenalty: 1.0–1.05` are NIM-only extras; leave them unset if your hosted endpoint rejects them.
+- `frequencyPenalty` reduces repeated wording; `presencePenalty` pushes new topics/ideas.
+- `seed` makes sampling repeatable (useful for testing, not for creativity).
 
 ## Design & optimizations
 

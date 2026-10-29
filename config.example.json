@@ -20,15 +20,26 @@
     "model": "nvidia/nemotron-3.5-super-vl-120b-a12b",
     "ultraModel": "nvidia/nemotron-3-ultra-550b-a55b",
     "fallbackModel": "nvidia/nemotron-3.5-lightning-30b-a3b",
-    "temperature": 0.6,
-    "timeoutMs": 0
+    "temperature": 1.2,
+    "timeoutMs": 0,
+    "topP": 1,
+    "topK": null,
+    "minP": null,
+    "repetitionPenalty": null,
+    "frequencyPenalty": 0.3,
+    "presencePenalty": 0.5,
+    "seed": null
   },
   "deepseek": {
     "baseUrl": "https://api.deepseek.com",
     "model": "deepseek-flash",
     "proModel": "deepseek-v4-pro",
-    "temperature": 0.6,
-    "timeoutMs": 0
+    "temperature": 1.2,
+    "timeoutMs": 0,
+    "topP": 1,
+    "frequencyPenalty": 0.2,
+    "presencePenalty": 0.4,
+    "seed": null
   },
   "model": {
     "defaultAlias": "deepseek",

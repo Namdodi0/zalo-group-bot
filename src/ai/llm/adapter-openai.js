@@ -81,6 +81,17 @@ export const DEEPSEEK_REASONING_MAP = {
   auto: 'low',
 };
 
+/** Neutral sampling names -> OpenAI-compatible wire names. */
+export const SAMPLING_FIELDS = {
+  topP: 'top_p',
+  topK: 'top_k',
+  minP: 'min_p',
+  repetitionPenalty: 'repetition_penalty',
+  frequencyPenalty: 'frequency_penalty',
+  presencePenalty: 'presence_penalty',
+  seed: 'seed',
+};
+
 /**
  * OpenAI-compatible adapter (NVIDIA NIM, DeepSeek, ...).
  * The wire format lives entirely here; the service only knows the neutral vocabulary.
@@ -123,7 +134,7 @@ export function createOpenAiCompatAdapter(options) {
   }
 
   /**
-   * @param {{messages: any[], tools?: any[], toolChoice?: any, model?: string, reasoning?: 'none'|'low'|'medium'|'high'|'auto', temperature?: number, maxTokens?: number|null, signal?: AbortSignal|null, timeoutMs?: number, ttftMs?: number, stream?: boolean, onDelta?: (text: string) => void|Promise<void>}} input
+   * @param {{messages: any[], tools?: any[], toolChoice?: any, model?: string, reasoning?: 'none'|'low'|'medium'|'high'|'auto', temperature?: number, maxTokens?: number|null, sampling?: Record<string, number>, signal?: AbortSignal|null, timeoutMs?: number, ttftMs?: number, stream?: boolean, onDelta?: (text: string) => void|Promise<void>}} input
    */
   async function chat(input) {
     /** @type {any} */
@@ -133,6 +144,10 @@ export function createOpenAiCompatAdapter(options) {
       temperature: input.temperature ?? defaultTemperature,
       reasoning_effort: reasoningEffort(input.reasoning ?? 'none', reasoningMap),
     };
+    for (const [key, apiKey] of Object.entries(SAMPLING_FIELDS)) {
+      const value = input.sampling?.[key];
+      if (value !== undefined && value !== null) payload[apiKey] = value;
+    }
     if (input.tools?.length) {
       payload.tools = input.tools;
       payload.tool_choice = input.toolChoice ?? 'auto';

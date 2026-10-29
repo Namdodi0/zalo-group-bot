@@ -80,6 +80,42 @@ test('reasoning auto maps to low and tools are sent along', async () => {
   assert.equal(http.calls[0].payload.tools.length, 1);
 });
 
+test('sends sampling parameters when provided', async () => {
+  const http = fakeHttp([], standardResponse);
+  const nim = makeClient(http);
+  await nim.chat({
+    messages: [{ role: 'user', content: 'hi' }],
+    reasoning: 'none',
+    sampling: {
+      topP: 0.98,
+      topK: -1,
+      minP: 0.02,
+      repetitionPenalty: 1.05,
+      frequencyPenalty: 0.3,
+      presencePenalty: 0.4,
+      seed: 42,
+    },
+  });
+
+  const payload = http.calls[0].payload;
+  assert.equal(payload.top_p, 0.98);
+  assert.equal(payload.top_k, -1);
+  assert.equal(payload.min_p, 0.02);
+  assert.equal(payload.repetition_penalty, 1.05);
+  assert.equal(payload.frequency_penalty, 0.3);
+  assert.equal(payload.presence_penalty, 0.4);
+  assert.equal(payload.seed, 42);
+});
+
+test('omits sampling parameters that are not configured', async () => {
+  const http = fakeHttp([], standardResponse);
+  const nim = makeClient(http);
+  await nim.chat({ messages: [{ role: 'user', content: 'hi' }], reasoning: 'none' });
+  const payload = http.calls[0].payload;
+  assert.equal('top_p' in payload, false);
+  assert.equal('top_k' in payload, false);
+});
+
 test('circuit breaker is keyed by provider+model and does not lock the whole provider', async () => {
   const http = fakeHttp([], standardResponse);
   const client = makeClient(http);
