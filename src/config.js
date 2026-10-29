@@ -15,12 +15,80 @@ const BOOL_TRUE = new Set(['1', 'on', 'true', 'yes', 'y']);
 const BOOL_FALSE = new Set(['0', 'off', 'false', 'no', 'n', '']);
 
 // Root directory of the repo, derived from this file (src/..) — NOT dependent on cwd.
-// Panel/pm2/systemd may start the bot with a different cwd, which makes a relative DATA_DIR
+// Panel/pm2/systemd may start the bot with a different cwd, which makes a relative dataDir
 // point at a brand-new directory and the context "disappear" after every restart.
 const PROJECT_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const DEFAULT_CONFIG_PATH = path.join(PROJECT_ROOT, 'config.json');
+
+/** Settings that used to live in .env. They are ignored now; warn so old deployments migrate. */
+const LEGACY_ENV_KEYS = new Set([
+  'MODE',
+  'AI_REASONING',
+  'NIM_REASONING',
+  'PROGRESSIVE',
+  'LOG_FORMAT',
+  'LOG_COLOR',
+  'LOG_LEVEL',
+  'LOG_THINKING',
+  'NIM_MAX_TOKENS',
+  'MODEL_DEFAULT',
+  'MODEL_FALLBACK',
+  'SEARCH_ENABLED',
+  'SEARCH_AUTO',
+  'SEARCH_DEPTH',
+  'SEARCH_MAX_RESULTS',
+  'SEARCH_COUNTRY',
+  'SEARCH_CACHE_TTL_MS',
+  'DATA_DIR',
+  'ZALO_BOT_ID',
+  'ZALO_BASE_URL',
+  'ZALO_PARSE_MODE',
+  'ALLOWED_CHAT_IDS',
+  'ADMIN_IDS',
+  'WEBHOOK_PORT',
+  'WEBHOOK_HOST',
+  'WEBHOOK_PATH',
+  'WEBHOOK_PUBLIC_URL',
+  'WEBHOOK_SECRET',
+  'NIM_BASE_URL',
+  'NIM_MODEL',
+  'NIM_ULTRA_MODEL',
+  'NIM_FALLBACK_MODEL',
+  'NIM_TEMPERATURE',
+  'NIM_TIMEOUT_MS',
+  'DEEPSEEK_BASE_URL',
+  'DEEPSEEK_MODEL',
+  'DEEPSEEK_PRO_MODEL',
+  'DEEPSEEK_TEMPERATURE',
+  'DEEPSEEK_TIMEOUT_MS',
+  'TAVILY_BASE_URL',
+  'RESPONSE_TIMEOUT_MS',
+  'CONTEXT_MAX_TOKENS',
+  'CONTEXT_MAX_MESSAGES',
+  'CONTEXT_MAX_CHARS_PER_MESSAGE',
+  'CONTEXT_TTL_HOURS',
+  'CONTEXT_SUMMARY',
+  'CONTEXT_MODEL_WINDOW',
+  'CONTEXT_COMPACT_THRESHOLD',
+  'CONTEXT_KEEP_RECENT',
+  'CONTEXT_SUMMARY_MAX_CHARS',
+  'CONTEXT_TOOL_RESULT_KEEP_CHARS',
+  'IMAGE_ENABLED',
+  'STICKER_ENABLED',
+  'STICKER_ECHO',
+  'STICKER_IDS',
+  'BOT_TONE',
+  'TYPING',
+  'TYPING_INTERVAL_MS',
+  'PROGRESSIVE_AFTER_MS',
+  'MAX_MESSAGES_PER_REPLY',
+  'MAX_QUEUE_DEPTH',
+  'USER_RATE_LIMIT_PER_MINUTE',
+  'OPS_PORT',
+]);
 
 /**
- * A DATA_DIR inside a temp directory is guaranteed to be lost on restart/redeploy.
+ * A dataDir inside a temp directory is guaranteed to be lost on restart/redeploy.
  * @param {string} dir
  */
 export function isEphemeralDataDir(dir) {
@@ -44,75 +112,110 @@ export class ConfigError extends Error {
   }
 }
 
-/** @param {Record<string, unknown>} env @param {string} key @param {boolean} fallback */
-function readBool(env, key, fallback) {
-  const raw = env[key];
-  if (raw === undefined || raw === null) return fallback;
-  const value = String(raw).trim().toLowerCase();
-  if (BOOL_TRUE.has(value)) return true;
-  if (BOOL_FALSE.has(value)) return false;
-  throw new ConfigError(`${key} must be on/off (got: "${raw}")`);
+/** @param {unknown} value @param {string} key @param {string} [fallback] */
+function asString(value, key, fallback = '') {
+  if (value === undefined || value === null) return fallback;
+  if (typeof value !== 'string' && typeof value !== 'number') {
+    throw new ConfigError(`${key} must be a string`);
+  }
+  return String(value).trim();
 }
 
-/** @param {Record<string, unknown>} env @param {string} key @param {string} fallback */
-function readStr(env, key, fallback = '') {
-  const raw = env[key];
-  if (raw === undefined || raw === null) return fallback;
-  return String(raw).trim();
+/** @param {unknown} value @param {string} key @param {boolean} fallback */
+function asBool(value, key, fallback) {
+  if (value === undefined || value === null) return fallback;
+  if (typeof value === 'boolean') return value;
+  const text = String(value).trim().toLowerCase();
+  if (BOOL_TRUE.has(text)) return true;
+  if (BOOL_FALSE.has(text)) return false;
+  throw new ConfigError(`${key} must be a boolean (got: "${value}")`);
 }
 
 /**
- * @param {Record<string, unknown>} env
+ * @param {unknown} value
  * @param {string} key
  * @param {number|null} fallback
  * @param {{min?:number,max?:number}} [bounds]
  * @returns {number|null}
  */
-function readInt(env, key, fallback, bounds = {}) {
-  const raw = readStr(env, key);
-  if (!raw) return fallback;
-  const value = Number(raw);
-  if (!Number.isFinite(value) || !Number.isInteger(value)) {
-    throw new ConfigError(`${key} must be an integer (got: "${raw}")`);
+function asInt(value, key, fallback, bounds = {}) {
+  if (value === undefined || value === null || value === '') return fallback;
+  const number = typeof value === 'number' ? value : Number(String(value).trim());
+  if (!Number.isFinite(number) || !Number.isInteger(number)) {
+    throw new ConfigError(`${key} must be an integer (got: "${value}")`);
   }
-  if (bounds.min !== undefined && value < bounds.min) {
-    throw new ConfigError(`${key} must be >= ${bounds.min} (got: ${value})`);
+  if (bounds.min !== undefined && number < bounds.min) {
+    throw new ConfigError(`${key} must be >= ${bounds.min} (got: ${number})`);
   }
-  if (bounds.max !== undefined && value > bounds.max) {
-    throw new ConfigError(`${key} must be <= ${bounds.max} (got: ${value})`);
+  if (bounds.max !== undefined && number > bounds.max) {
+    throw new ConfigError(`${key} must be <= ${bounds.max} (got: ${number})`);
   }
-  return value;
+  return number;
 }
 
 /**
- * @param {Record<string, unknown>} env
+ * @param {unknown} value
  * @param {string} key
  * @param {number} fallback
  * @param {{min?:number,max?:number}} [bounds]
- * @returns {number}
  */
-function readNumber(env, key, fallback, bounds = {}) {
-  const raw = readStr(env, key);
-  if (!raw) return fallback;
-  const value = Number(raw);
-  if (!Number.isFinite(value)) {
-    throw new ConfigError(`${key} must be a number (got: "${raw}")`);
+function asNumber(value, key, fallback, bounds = {}) {
+  if (value === undefined || value === null || value === '') return fallback;
+  const number = typeof value === 'number' ? value : Number(String(value).trim());
+  if (!Number.isFinite(number)) {
+    throw new ConfigError(`${key} must be a number (got: "${value}")`);
   }
-  if (bounds.min !== undefined && value < bounds.min) {
-    throw new ConfigError(`${key} must be >= ${bounds.min} (got: ${value})`);
+  if (bounds.min !== undefined && number < bounds.min) {
+    throw new ConfigError(`${key} must be >= ${bounds.min} (got: ${number})`);
   }
-  if (bounds.max !== undefined && value > bounds.max) {
-    throw new ConfigError(`${key} must be <= ${bounds.max} (got: ${value})`);
+  if (bounds.max !== undefined && number > bounds.max) {
+    throw new ConfigError(`${key} must be <= ${bounds.max} (got: ${number})`);
   }
-  return value;
+  return number;
 }
 
-/** @param {Record<string, unknown>} env @param {string} key */
-function readList(env, key) {
-  return readStr(env, key)
+/** @param {unknown} value @param {string} key */
+function asStringList(value, key) {
+  if (value === undefined || value === null) return [];
+  if (Array.isArray(value)) {
+    return value.map((item) => String(item).trim()).filter(Boolean);
+  }
+  if (typeof value !== 'string') throw new ConfigError(`${key} must be an array of strings`);
+  return value
     .split(',')
     .map((item) => item.trim())
     .filter(Boolean);
+}
+
+/** @param {Record<string, any>} root @param {string} name */
+function section(root, name) {
+  const value = root?.[name];
+  if (value === undefined || value === null) return {};
+  if (typeof value !== 'object' || Array.isArray(value)) {
+    throw new ConfigError(`config.${name} must be an object`);
+  }
+  return /** @type {Record<string, any>} */ (value);
+}
+
+/** @param {string} file */
+function readConfigFile(file) {
+  let raw;
+  try {
+    raw = fs.readFileSync(file, 'utf8').replace(/^\uFEFF/, '');
+  } catch (error) {
+    if (/** @type {any} */ (error)?.code === 'ENOENT') return null;
+    throw new ConfigError(`Could not read config file ${file}: ${/** @type {any} */ (error)?.message ?? error}`);
+  }
+  let parsed;
+  try {
+    parsed = JSON.parse(raw);
+  } catch (error) {
+    throw new ConfigError(`Could not parse ${file}: ${/** @type {any} */ (error)?.message ?? error}`);
+  }
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    throw new ConfigError(`${file} must contain a JSON object`);
+  }
+  return /** @type {Record<string, any>} */ (parsed);
 }
 
 /** Shorten a secret so it is safe to print in logs. */
@@ -136,6 +239,7 @@ export function collectSecrets(config) {
 
 /** @type {import('node:util').ParseArgsOptionsConfig} */
 const CLI_OPTIONS = {
+  config: { type: 'string' },
   model: { type: 'string' },
   mode: { type: 'string' },
   think: { type: 'string' },
@@ -151,39 +255,41 @@ const CLI_OPTIONS = {
   help: { type: 'boolean' },
 };
 
-export const HELP_TEXT = `zalo-group-bot — Zalo bot for group chats (NVIDIA NIM + Tavily)
+export const HELP_TEXT = `zalo-group-bot — Zalo bot for group chats (DeepSeek / NVIDIA NIM + Tavily)
 
-Usage: node index.js [flags]      (.env is loaded automatically from the working directory)
+Usage: node index.js [flags]
+  Secrets are read from .env; non-secret settings from config.json.
 
 Flags:
-  --model <alias>     Default model: deepseek | pro | nim | ultra | nim-light
-  --mode <m>          polling | webhook
-  --think <mode>      none | low | medium | high | auto
-  --max-tokens <n>    Cap on generated tokens (empty = unlimited)
-  --progressive <m>   auto | on | off  (send chunked replies on slow answers)
-  --no-progressive    Disable chunked replies
-  --no-search         Disable web search
-  --no-typing         Do not send the "typing" status
-  --dry-run           Do not send real messages (log only)
-  --once              Handle a single update then exit (for testing)
-  --verbose           Debug-level logging
-  --json              JSON logs (default is pretty, with colors + icons)
-  --help              Print this help
+  --config <path>    Config file (default: config.json in the repo root)
+  --model <alias>    Default model: deepseek | pro | nim | ultra | nim-light
+  --mode <m>         polling | webhook
+  --think <mode>     none | low | medium | high | auto
+  --max-tokens <n>   Cap on generated tokens (empty = unlimited)
+  --progressive <m>  auto | on | off  (send chunked replies on slow answers)
+  --no-progressive   Disable chunked replies
+  --no-search        Disable web search
+  --no-typing        Do not send the "typing" status
+  --dry-run          Do not send real messages (log only)
+  --once             Handle a single update then exit (for testing)
+  --verbose          Debug-level logging
+  --json             JSON logs (default is pretty, with colors + icons)
+  --help             Print this help
 
-Environment variables: see .env.example`;
+Secrets: ZALO_BOT_TOKEN, NIM_API_KEY, DEEPSEEK_API_KEY, TAVILY_API_KEY (see .env.example).
+Settings: see config.example.json.`;
 
 /**
- * Webhook secret: prefer the env; if missing, generate it once and store it in data/
- * so a restart does not change the secret (which would make every request fail with 403).
- * @param {Record<string, unknown>} env
+ * Webhook secret: use config.webhook.secret when set; otherwise generate it once and store
+ * it in data/ so a restart does not change the secret (403 on every request).
  * @param {string} dataDir
  * @param {string} mode
+ * @param {string} configured
  */
-function resolveWebhookSecret(env, dataDir, mode) {
-  const fromEnv = readStr(env, 'WEBHOOK_SECRET');
-  if (fromEnv) {
-    if (fromEnv.length < 8) throw new ConfigError('WEBHOOK_SECRET must be at least 8 characters');
-    return fromEnv;
+function resolveWebhookSecret(dataDir, mode, configured) {
+  if (configured) {
+    if (configured.length < 8) throw new ConfigError('config.webhook.secret must be at least 8 characters');
+    return configured;
   }
   if (mode !== 'webhook') return '';
 
@@ -206,7 +312,7 @@ function resolveWebhookSecret(env, dataDir, mode) {
 }
 
 /**
- * @param {{argv?: string[], env?: Record<string, unknown>, cwd?: string}} [input]
+ * @param {{argv?: string[], env?: Record<string, unknown>, cwd?: string, config?: Record<string, any>, configPath?: string}} [input]
  */
 export function loadConfig(input = {}) {
   const argv = input.argv ?? process.argv.slice(2);
@@ -225,135 +331,197 @@ export function loadConfig(input = {}) {
     return /** @type {any} */ ({ help: true });
   }
 
-  const mode = String(cli.mode ?? readStr(env, 'MODE', 'polling')).toLowerCase();
+  const explicitConfigPath = input.configPath ?? (cli.config ? path.resolve(cwd, String(cli.config)) : null);
+  const configPath = explicitConfigPath ?? DEFAULT_CONFIG_PATH;
+  let root;
+  let configFileFound;
+  if (input.config !== undefined) {
+    root = input.config;
+    configFileFound = true;
+  } else {
+    const loaded = readConfigFile(configPath);
+    if (!loaded && explicitConfigPath) {
+      throw new ConfigError(`Config file not found: ${configPath}`);
+    }
+    root = loaded ?? {};
+    configFileFound = loaded !== null;
+  }
+  if (!root || typeof root !== 'object' || Array.isArray(root)) {
+    throw new ConfigError('config must be a JSON object');
+  }
+
+  const legacyEnvKeys = [...LEGACY_ENV_KEYS]
+    .filter((key) => env[key] !== undefined && env[key] !== '')
+    .sort();
+  if (legacyEnvKeys.length && !configFileFound) {
+    throw new ConfigError(
+      `Non-secret settings found in the environment/.env but config.json is missing. ` +
+        `Move them to config.json (copy config.example.json): ${legacyEnvKeys.join(', ')}`,
+    );
+  }
+
+  const zaloSection = section(root, 'zalo');
+  const webhookSection = section(root, 'webhook');
+  const nimSection = section(root, 'nim');
+  const deepseekSection = section(root, 'deepseek');
+  const modelSection = section(root, 'model');
+  const aiSection = section(root, 'ai');
+  const contextSection = section(root, 'context');
+  const searchSection = section(root, 'search');
+  const imageSection = section(root, 'image');
+  const stickerSection = section(root, 'sticker');
+
+  const token = asString(env.ZALO_BOT_TOKEN, 'ZALO_BOT_TOKEN');
+  if (!token) throw new ConfigError('Missing ZALO_BOT_TOKEN (see .env.example)');
+  const nimKey = asString(env.NIM_API_KEY, 'NIM_API_KEY');
+  const deepseekKey = asString(env.DEEPSEEK_API_KEY, 'DEEPSEEK_API_KEY');
+  const tavilyKey = asString(env.TAVILY_API_KEY, 'TAVILY_API_KEY');
+
+  const mode = String(cli.mode ?? asString(root.mode, 'config.mode', 'polling')).toLowerCase();
   if (mode !== 'polling' && mode !== 'webhook') {
-    throw new ConfigError(`MODE must be "polling" or "webhook" (got: "${mode}")`);
+    throw new ConfigError(`config.mode must be "polling" or "webhook" (got: "${mode}")`);
   }
 
   const reasoning = String(
-    cli.think ?? readStr(env, 'AI_REASONING', readStr(env, 'NIM_REASONING', 'none')),
+    cli.think ?? asString(aiSection.reasoning, 'config.ai.reasoning', 'none'),
   ).toLowerCase();
   if (!['none', 'low', 'medium', 'high', 'auto'].includes(reasoning)) {
-    throw new ConfigError(`AI_REASONING must be none|low|medium|high|auto (got: "${reasoning}")`);
+    throw new ConfigError(`config.ai.reasoning must be none|low|medium|high|auto (got: "${reasoning}")`);
   }
 
   let progressive = String(
-    cli['no-progressive'] ? 'off' : cli.progressive ?? readStr(env, 'PROGRESSIVE', 'auto'),
+    cli['no-progressive'] ? 'off' : cli.progressive ?? asString(root.progressive, 'config.progressive', 'auto'),
   ).toLowerCase();
   if (!['auto', 'on', 'off'].includes(progressive)) {
-    throw new ConfigError(`PROGRESSIVE must be auto|on|off (got: "${progressive}")`);
+    throw new ConfigError(`config.progressive must be auto|on|off (got: "${progressive}")`);
   }
 
-  const logFormat = String(cli.json ? 'json' : readStr(env, 'LOG_FORMAT', 'pretty')).toLowerCase();
+  const logFormat = String(cli.json ? 'json' : asString(root.logFormat, 'config.logFormat', 'pretty')).toLowerCase();
   if (!['pretty', 'json'].includes(logFormat)) {
-    throw new ConfigError(`LOG_FORMAT must be pretty or json (got: "${logFormat}")`);
+    throw new ConfigError(`config.logFormat must be pretty or json (got: "${logFormat}")`);
   }
 
-  const logColor = readStr(env, 'LOG_COLOR', 'auto').toLowerCase();
+  const logColor = asString(root.logColor, 'config.logColor', 'auto').toLowerCase();
   if (!['auto', 'always', 'never'].includes(logColor)) {
-    throw new ConfigError(`LOG_COLOR must be auto|always|never (got: "${logColor}")`);
+    throw new ConfigError(`config.logColor must be auto|always|never (got: "${logColor}")`);
   }
 
-  const maxTokensRaw =
-    cli['max-tokens'] !== undefined ? String(cli['max-tokens']) : readStr(env, 'NIM_MAX_TOKENS');
+  const maxTokensRaw = cli['max-tokens'] !== undefined ? cli['max-tokens'] : aiSection.maxTokens;
   let maxTokens = null;
-  if (maxTokensRaw) {
-    const parsed = Number(maxTokensRaw);
-    if (!Number.isInteger(parsed) || parsed < 0) {
-      throw new ConfigError(`NIM_MAX_TOKENS must be an integer >= 0 or left empty (got: "${maxTokensRaw}")`);
-    }
+  if (maxTokensRaw !== undefined && maxTokensRaw !== null && maxTokensRaw !== '') {
+    const parsed = asInt(maxTokensRaw, 'config.ai.maxTokens', 0, { min: 0 });
     // 0 = unlimited (same as leaving it empty)
     maxTokens = parsed === 0 ? null : parsed;
   }
 
-  const token = readStr(env, 'ZALO_BOT_TOKEN');
-  if (!token) throw new ConfigError('Missing ZALO_BOT_TOKEN (see .env.example)');
-
-  const apiKey = readStr(env, 'NIM_API_KEY');
-  const deepseekKey = readStr(env, 'DEEPSEEK_API_KEY');
-
-  const defaultAlias = String(cli.model ?? readStr(env, 'MODEL_DEFAULT', DEFAULT_ALIAS)).toLowerCase();
+  const defaultAlias = String(cli.model ?? asString(modelSection.defaultAlias, 'config.model.defaultAlias', DEFAULT_ALIAS)).toLowerCase();
   if (!isKnownAlias(defaultAlias)) {
     throw new ConfigError(
-      `MODEL_DEFAULT is invalid (got: "${defaultAlias}"). Choose: ${Object.keys(MODEL_ALIASES).join(', ')}`,
+      `config.model.defaultAlias is invalid (got: "${defaultAlias}"). Choose: ${Object.keys(MODEL_ALIASES).join(', ')}`,
     );
   }
-  let fallbackAlias = String(readStr(env, 'MODEL_FALLBACK', FALLBACK_ALIAS)).toLowerCase();
+  let fallbackAlias = String(
+    asString(modelSection.fallbackAlias, 'config.model.fallbackAlias', FALLBACK_ALIAS),
+  ).toLowerCase();
   if (!isKnownAlias(fallbackAlias)) {
     throw new ConfigError(
-      `MODEL_FALLBACK is invalid (got: "${fallbackAlias}"). Choose: ${Object.keys(MODEL_ALIASES).join(', ')}`,
+      `config.model.fallbackAlias is invalid (got: "${fallbackAlias}"). Choose: ${Object.keys(MODEL_ALIASES).join(', ')}`,
     );
   }
-  if (fallbackAlias === defaultAlias) fallbackAlias = defaultAlias === 'nim-light' ? 'deepseek' : 'nim-light';
+  if (fallbackAlias === defaultAlias) {
+    fallbackAlias = defaultAlias === 'nim-light' ? 'deepseek' : 'nim-light';
+  }
 
   // Only the provider actually used as the primary needs a key. The fallback is optional:
   // when its provider has no key the model catalog simply drops that alias and picks another
   // available model (or no distinct fallback), instead of refusing to start.
   const primaryProvider = MODEL_ALIASES[defaultAlias].provider;
-  if (primaryProvider === 'nim' && !apiKey) {
+  if (primaryProvider === 'nim' && !nimKey) {
     throw new ConfigError('Missing NIM_API_KEY (used as the primary model)');
   }
   if (primaryProvider === 'deepseek' && !deepseekKey) {
     throw new ConfigError('Missing DEEPSEEK_API_KEY (see .env.example)');
   }
 
-  const searchEnabled = cli['no-search']
-    ? false
-    : readBool(env, 'SEARCH_ENABLED', true);
-  const tavilyKey = readStr(env, 'TAVILY_API_KEY');
+  const searchEnabled = cli['no-search'] ? false : asBool(searchSection.enabled, 'config.search.enabled', true);
   if (searchEnabled && !tavilyKey) {
-    throw new ConfigError('SEARCH_ENABLED=on but TAVILY_API_KEY is missing (or use --no-search)');
+    throw new ConfigError('config.search.enabled is true but TAVILY_API_KEY is missing (or use --no-search)');
   }
 
-  let webhookSecret = '';
-  // Relative → resolve against the repo root so the panel/pm2 cwd cannot change where context is stored.
-  const dataDirRaw = readStr(env, 'DATA_DIR', './data').trim() || './data';
+  const dataDirRaw = asString(root.dataDir, 'config.dataDir', './data') || './data';
   const dataDir = path.isAbsolute(dataDirRaw)
     ? path.normalize(dataDirRaw)
     : path.resolve(PROJECT_ROOT, dataDirRaw);
-  webhookSecret = resolveWebhookSecret(env, dataDir, mode);
 
-  const depthRaw = readStr(env, 'SEARCH_DEPTH', 'fast');
+  const depthRaw = asString(searchSection.depth, 'config.search.depth', 'fast');
   if (!['fast', 'basic', 'advanced', 'ultra-fast'].includes(depthRaw)) {
-    throw new ConfigError(`SEARCH_DEPTH must be fast|basic|advanced|ultra-fast (got: "${depthRaw}")`);
+    throw new ConfigError(`config.search.depth must be fast|basic|advanced|ultra-fast (got: "${depthRaw}")`);
+  }
+
+  const compactThreshold = asNumber(contextSection.compactThreshold, 'config.context.compactThreshold', 0.8);
+  if (!(compactThreshold > 0 && compactThreshold <= 1)) {
+    throw new ConfigError(`config.context.compactThreshold must be within (0, 1] (got: "${compactThreshold}")`);
+  }
+
+  const toneRaw = asString(root.tone, 'config.tone', 'roast-hard').toLowerCase();
+  const toneAlias = {
+    max: 'roast-extreme',
+    extreme: 'roast-extreme',
+    cuc: 'roast-extreme',
+    'c\u1EF1c': 'roast-extreme',
+    'sieu-nang': 'roast-extreme',
+    hard: 'roast-hard',
+    nang: 'roast-hard',
+    'n\u1EB7ng': 'roast-hard',
+    cay: 'roast',
+    cakhia: 'roast',
+  };
+  const tone = toneAlias[toneRaw] ?? toneRaw;
+  if (!['friendly', 'roast', 'roast-hard', 'roast-extreme'].includes(tone)) {
+    throw new ConfigError(`config.tone must be friendly, roast, roast-hard or roast-extreme (got: "${toneRaw}")`);
   }
 
   const config = {
     help: false,
     version: VERSION,
+    configFile: input.config !== undefined ? null : configPath,
+    configFileFound,
+    ignoredEnvKeys: legacyEnvKeys,
     zalo: {
       token,
-      botId: readStr(env, 'ZALO_BOT_ID'),
-      baseUrl: readStr(env, 'ZALO_BASE_URL', 'https://bot-api.zaloplatforms.com'),
-      parseMode: /** @type {'markdown'|'none'} */ (readStr(env, 'ZALO_PARSE_MODE', 'markdown') === 'none' ? 'none' : 'markdown'),
+      botId: asString(zaloSection.botId, 'config.zalo.botId'),
+      baseUrl: asString(zaloSection.baseUrl, 'config.zalo.baseUrl', 'https://bot-api.zaloplatforms.com'),
+      parseMode: /** @type {'markdown'|'none'} */ (
+        asString(zaloSection.parseMode, 'config.zalo.parseMode', 'markdown').toLowerCase() === 'none' ? 'none' : 'markdown'
+      ),
     },
-    allowedChatIds: readList(env, 'ALLOWED_CHAT_IDS'),
-    adminIds: readList(env, 'ADMIN_IDS'),
+    allowedChatIds: asStringList(root.allowedChatIds, 'config.allowedChatIds'),
+    adminIds: asStringList(root.adminIds, 'config.adminIds'),
     mode: /** @type {TransportMode} */ (mode),
     webhook: {
-      port: /** @type {number} */ (readInt(env, 'WEBHOOK_PORT', 8787, { min: 1, max: 65535 })),
-      host: readStr(env, 'WEBHOOK_HOST', '127.0.0.1'),
-      path: readStr(env, 'WEBHOOK_PATH', '/zalo/webhook'),
-      secret: webhookSecret,
-      publicUrl: readStr(env, 'WEBHOOK_PUBLIC_URL'),
+      port: /** @type {number} */ (asInt(webhookSection.port, 'config.webhook.port', 8787, { min: 1, max: 65535 })),
+      host: asString(webhookSection.host, 'config.webhook.host', '127.0.0.1'),
+      path: asString(webhookSection.path, 'config.webhook.path', '/zalo/webhook'),
+      secret: resolveWebhookSecret(dataDir, mode, asString(webhookSection.secret, 'config.webhook.secret')),
+      publicUrl: asString(webhookSection.publicUrl, 'config.webhook.publicUrl'),
     },
     nim: {
-      apiKey,
-      baseUrl: readStr(env, 'NIM_BASE_URL', 'https://integrate.api.nvidia.com/v1').replace(/\/+$/, ''),
-      model: readStr(env, 'NIM_MODEL', 'nvidia/nemotron-3.5-super-vl-120b-a12b'),
-      ultraModel: readStr(env, 'NIM_ULTRA_MODEL', 'nvidia/nemotron-3-ultra-550b-a55b'),
-      fallbackModel: readStr(env, 'NIM_FALLBACK_MODEL', 'nvidia/nemotron-3.5-lightning-30b-a3b'),
-      temperature: readNumber(env, 'NIM_TEMPERATURE', 0.6, { min: 0, max: 2 }),
+      apiKey: nimKey,
+      baseUrl: asString(nimSection.baseUrl, 'config.nim.baseUrl', 'https://integrate.api.nvidia.com/v1').replace(/\/+$/, ''),
+      model: asString(nimSection.model, 'config.nim.model', 'nvidia/nemotron-3.5-super-vl-120b-a12b'),
+      ultraModel: asString(nimSection.ultraModel, 'config.nim.ultraModel', 'nvidia/nemotron-3-ultra-550b-a55b'),
+      fallbackModel: asString(nimSection.fallbackModel, 'config.nim.fallbackModel', 'nvidia/nemotron-3.5-lightning-30b-a3b'),
+      temperature: asNumber(nimSection.temperature, 'config.nim.temperature', 0.6, { min: 0, max: 2 }),
       // 0 = no request timeout (wait for the provider as long as it needs).
-      timeoutMs: /** @type {number} */ (readInt(env, 'NIM_TIMEOUT_MS', 0, { min: 0 })),
+      timeoutMs: /** @type {number} */ (asInt(nimSection.timeoutMs, 'config.nim.timeoutMs', 0, { min: 0 })),
     },
     deepseek: {
       apiKey: deepseekKey,
-      baseUrl: readStr(env, 'DEEPSEEK_BASE_URL', 'https://api.deepseek.com').replace(/\/+$/, ''),
-      model: readStr(env, 'DEEPSEEK_MODEL', 'deepseek-flash'),
-      proModel: readStr(env, 'DEEPSEEK_PRO_MODEL', 'deepseek-v4-pro'),
-      temperature: readNumber(env, 'DEEPSEEK_TEMPERATURE', 0.6, { min: 0, max: 2 }),
-      timeoutMs: /** @type {number} */ (readInt(env, 'DEEPSEEK_TIMEOUT_MS', 0, { min: 0 })),
+      baseUrl: asString(deepseekSection.baseUrl, 'config.deepseek.baseUrl', 'https://api.deepseek.com').replace(/\/+$/, ''),
+      model: asString(deepseekSection.model, 'config.deepseek.model', 'deepseek-flash'),
+      proModel: asString(deepseekSection.proModel, 'config.deepseek.proModel', 'deepseek-v4-pro'),
+      temperature: asNumber(deepseekSection.temperature, 'config.deepseek.temperature', 0.6, { min: 0, max: 2 }),
+      timeoutMs: /** @type {number} */ (asInt(deepseekSection.timeoutMs, 'config.deepseek.timeoutMs', 0, { min: 0 })),
     },
     model: {
       defaultAlias,
@@ -362,91 +530,70 @@ export function loadConfig(input = {}) {
     ai: {
       reasoning: /** @type {ReasoningMode} */ (reasoning),
       maxTokens,
-      timeoutMs: /** @type {number} */ (readInt(env, 'NIM_TIMEOUT_MS', 0, { min: 0 })),
     },
     // 0 = no deadline (the bot waits until the provider answers).
-    responseTimeoutMs: /** @type {number} */ (readInt(env, 'RESPONSE_TIMEOUT_MS', 0, { min: 0 })),
+    responseTimeoutMs: /** @type {number} */ (asInt(root.responseTimeoutMs, 'config.responseTimeoutMs', 0, { min: 0 })),
     context: {
       dir: path.join(dataDir, 'contexts'),
       // 0 = unlimited
-      maxTokens: /** @type {number} */ (readInt(env, 'CONTEXT_MAX_TOKENS', 0, { min: 0 })),
-      maxMessages: /** @type {number} */ (readInt(env, 'CONTEXT_MAX_MESSAGES', 0, { min: 0 })),
-      maxCharsPerMessage: /** @type {number} */ (readInt(env, 'CONTEXT_MAX_CHARS_PER_MESSAGE', 12000, { min: 0 })),
-      ttlHours: /** @type {number} */ (readInt(env, 'CONTEXT_TTL_HOURS', 72, { min: 0 })),
+      maxTokens: /** @type {number} */ (asInt(contextSection.maxTokens, 'config.context.maxTokens', 0, { min: 0 })),
+      maxMessages: /** @type {number} */ (asInt(contextSection.maxMessages, 'config.context.maxMessages', 0, { min: 0 })),
+      maxCharsPerMessage: /** @type {number} */ (
+        asInt(contextSection.maxCharsPerMessage, 'config.context.maxCharsPerMessage', 12_000, { min: 0 })
+      ),
+      ttlHours: /** @type {number} */ (asInt(contextSection.ttlHours, 'config.context.ttlHours', 72, { min: 0 })),
       // ttlHours = 0 → never auto-delete the context
-      summary: readBool(env, 'CONTEXT_SUMMARY', true),
+      summary: asBool(contextSection.summary, 'config.context.summary', true),
       // 0 = unknown context window → only compact when the provider reports overflow
-      modelWindow: /** @type {number} */ (readInt(env, 'CONTEXT_MODEL_WINDOW', 0, { min: 0 })),
-      compactThreshold: (() => {
-        const raw = readStr(env, 'CONTEXT_COMPACT_THRESHOLD');
-        if (!raw) return 0.8;
-        const value = Number(raw);
-        if (!Number.isFinite(value) || value <= 0 || value > 1) {
-          throw new ConfigError(`CONTEXT_COMPACT_THRESHOLD must be within (0, 1] (got: "${raw}")`);
-        }
-        return value;
-      })(),
-      keepRecent: /** @type {number} */ (readInt(env, 'CONTEXT_KEEP_RECENT', 8, { min: 1 })),
-      summaryMaxChars: /** @type {number} */ (readInt(env, 'CONTEXT_SUMMARY_MAX_CHARS', 1200, { min: 100 })),
-      toolResultKeepChars: /** @type {number} */ (readInt(env, 'CONTEXT_TOOL_RESULT_KEEP_CHARS', 600, { min: 0 })),
+      modelWindow: /** @type {number} */ (asInt(contextSection.modelWindow, 'config.context.modelWindow', 0, { min: 0 })),
+      compactThreshold,
+      keepRecent: /** @type {number} */ (asInt(contextSection.keepRecent, 'config.context.keepRecent', 8, { min: 1 })),
+      summaryMaxChars: /** @type {number} */ (
+        asInt(contextSection.summaryMaxChars, 'config.context.summaryMaxChars', 1200, { min: 100 })
+      ),
+      toolResultKeepChars: /** @type {number} */ (
+        asInt(contextSection.toolResultKeepChars, 'config.context.toolResultKeepChars', 600, { min: 0 })
+      ),
     },
     search: {
       enabled: searchEnabled,
-      auto: readBool(env, 'SEARCH_AUTO', true),
+      auto: asBool(searchSection.auto, 'config.search.auto', true),
       apiKey: tavilyKey,
-      baseUrl: readStr(env, 'TAVILY_BASE_URL', 'https://api.tavily.com').replace(/\/+$/, ''),
+      baseUrl: asString(searchSection.baseUrl, 'config.search.baseUrl', 'https://api.tavily.com').replace(/\/+$/, ''),
       depth: /** @type {'fast'|'basic'|'advanced'|'ultra-fast'} */ (depthRaw),
-      maxResults: /** @type {number} */ (readInt(env, 'SEARCH_MAX_RESULTS', 4, { min: 1, max: 10 })),
-      country: readStr(env, 'SEARCH_COUNTRY', 'vietnam'),
-      cacheTtlMs: /** @type {number} */ (readInt(env, 'SEARCH_CACHE_TTL_MS', 600_000, { min: 0 })),
+      maxResults: /** @type {number} */ (asInt(searchSection.maxResults, 'config.search.maxResults', 4, { min: 1, max: 10 })),
+      country: asString(searchSection.country, 'config.search.country', 'vietnam'),
+      cacheTtlMs: /** @type {number} */ (asInt(searchSection.cacheTtlMs, 'config.search.cacheTtlMs', 600_000, { min: 0 })),
     },
     image: {
-      enabled: readBool(env, 'IMAGE_ENABLED', true),
+      enabled: asBool(imageSection.enabled, 'config.image.enabled', true),
     },
     sticker: {
-      enabled: readBool(env, 'STICKER_ENABLED', true),
+      enabled: asBool(stickerSection.enabled, 'config.sticker.enabled', true),
       // echo the same sticker back when someone sends a sticker to the bot
-      echo: readBool(env, 'STICKER_ECHO', true),
+      echo: asBool(stickerSection.echo, 'config.sticker.echo', true),
       file: path.join(dataDir, 'stickers.json'),
       // pre-declared valid IDs: "id1,id2:name 2"
-      extraIds: parseStickerIds(readStr(env, 'STICKER_IDS')),
+      extraIds: parseStickerIds(asString(stickerSection.ids, 'config.sticker.ids')),
     },
-    tone: (() => {
-      const raw = readStr(env, 'BOT_TONE', 'roast-hard').toLowerCase();
-      // accept short aliases: max/extreme/cuc → roast-extreme, hard → roast-hard, cay → roast
-      const alias = {
-        max: 'roast-extreme',
-        extreme: 'roast-extreme',
-        cuc: 'roast-extreme',
-        'c\u1EF1c': 'roast-extreme',
-        'sieu-nang': 'roast-extreme',
-        hard: 'roast-hard',
-        nang: 'roast-hard',
-        'n\u1EB7ng': 'roast-hard',
-        cay: 'roast',
-        cakhia: 'roast',
-      };
-      const tone = alias[raw] ?? raw;
-      if (!['friendly', 'roast', 'roast-hard', 'roast-extreme'].includes(tone)) {
-        throw new ConfigError(`BOT_TONE must be friendly, roast, roast-hard or roast-extreme (got: "${raw}")`);
-      }
-      return tone;
-    })(),
-    typing: cli['no-typing'] ? false : readBool(env, 'TYPING', true),
-    typingIntervalMs: /** @type {number} */ (readInt(env, 'TYPING_INTERVAL_MS', 4000, { min: 1000 })),
+    tone,
+    typing: cli['no-typing'] ? false : asBool(root.typing, 'config.typing', true),
+    typingIntervalMs: /** @type {number} */ (asInt(root.typingIntervalMs, 'config.typingIntervalMs', 4000, { min: 1000 })),
     progressive: /** @type {ProgressiveMode} */ (progressive),
-    progressiveAfterMs: /** @type {number} */ (readInt(env, 'PROGRESSIVE_AFTER_MS', 3000, { min: 500 })),
+    progressiveAfterMs: /** @type {number} */ (asInt(root.progressiveAfterMs, 'config.progressiveAfterMs', 3000, { min: 500 })),
     // 0 = unlimited messages per reply
-    maxMessagesPerReply: /** @type {number} */ (readInt(env, 'MAX_MESSAGES_PER_REPLY', 0, { min: 0 })),
-    maxQueueDepth: /** @type {number} */ (readInt(env, 'MAX_QUEUE_DEPTH', 50, { min: 1, max: 1000 })),
+    maxMessagesPerReply: /** @type {number} */ (asInt(root.maxMessagesPerReply, 'config.maxMessagesPerReply', 0, { min: 0 })),
+    maxQueueDepth: /** @type {number} */ (asInt(root.maxQueueDepth, 'config.maxQueueDepth', 50, { min: 1, max: 1000 })),
     // 0 = off; enabled by default to block spam that burns API credits
-    userRateLimitPerMinute: /** @type {number} */ (readInt(env, 'USER_RATE_LIMIT_PER_MINUTE', 12, { min: 0 })),
-    logLevel: cli.verbose ? 'debug' : readStr(env, 'LOG_LEVEL', 'info').toLowerCase(),
-    logThinking: readBool(env, 'LOG_THINKING', true),
+    userRateLimitPerMinute: /** @type {number} */ (
+      asInt(root.userRateLimitPerMinute, 'config.userRateLimitPerMinute', 12, { min: 0 })
+    ),
+    logLevel: cli.verbose ? 'debug' : asString(root.logLevel, 'config.logLevel', 'info').toLowerCase(),
+    logThinking: asBool(root.logThinking, 'config.logThinking', true),
     logFormat: /** @type {'pretty'|'json'} */ (logFormat),
     logColor: /** @type {'auto'|'always'|'never'} */ (logColor),
     dataDir,
-    opsPort: readInt(env, 'OPS_PORT', null, { min: 1, max: 65535 }),
+    opsPort: asInt(root.opsPort, 'config.opsPort', null, { min: 1, max: 65535 }),
     dryRun: Boolean(cli['dry-run']),
     once: Boolean(cli.once),
   };
@@ -464,6 +611,7 @@ export function describeConfig(config) {
   return {
     version: config.version,
     mode: config.mode,
+    configFile: config.configFile ? path.basename(config.configFile) : 'inline/defaults',
     model: `${config.model.defaultAlias} (${primaryModel})`,
     fallbackModel: fallback
       ? `${config.model.fallbackAlias} (${fallbackReady ? fallbackModel || 'off' : 'no key — skipped'})`
@@ -493,5 +641,3 @@ export function describeConfig(config) {
     dryRun: config.dryRun,
   };
 }
-
-export const __test__ = { readBool, readInt, readList };

@@ -71,24 +71,25 @@ test('loadEnvFiles: no .env does not throw, the report records it as missing', a
   assert.equal(report.files.every((file) => file.found === false), true);
 });
 
-test('loadConfig reads the token from .env without the --env-file-if-exists flag', async () => {
+test('loadConfig reads API keys from .env without the --env-file-if-exists flag', async () => {
   const dir = await tempDir();
   await fsp.writeFile(
     path.join(dir, '.env'),
     [
       'ZALO_BOT_TOKEN=123:abc',
       'NIM_API_KEY=nvapi-test',
+      'DEEPSEEK_API_KEY=sk-test',
       'TAVILY_API_KEY=tvly-test',
-      'MODEL_DEFAULT=nim',
-      'MODEL_FALLBACK=nim-light',
     ].join('\n'),
   );
   /** @type {Record<string, string>} */
   const env = {};
   loadEnvFiles({ cwd: dir, env });
-  const config = loadConfig({ argv: [], env, cwd: dir });
+  const config = loadConfig({ argv: [], env, cwd: dir, config: {} });
   assert.equal(config.zalo.token, '123:abc');
-  assert.equal(config.model.defaultAlias, 'nim');
+  assert.equal(config.nim.apiKey, 'nvapi-test');
+  assert.equal(config.deepseek.apiKey, 'sk-test');
+  assert.equal(config.search.apiKey, 'tvly-test');
 });
 
 test('describeEnvHints: points out the directory and missing files when there is no .env', async () => {

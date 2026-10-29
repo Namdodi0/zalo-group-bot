@@ -112,13 +112,21 @@ Run `npm test` and `npm run typecheck` before reporting work as complete. Do not
 
 ## Configuration and security notes
 
-- `.env` is loaded in code (`src/env.js`): variables already in `process.env` win unless
-  empty. `.env.example` is the reference.
-- Relative `DATA_DIR` resolves from the repo root, not the process cwd. Never use temp dirs
+- **`.env` contains API keys/tokens only**: `ZALO_BOT_TOKEN`, `NIM_API_KEY`, `DEEPSEEK_API_KEY`,
+  `TAVILY_API_KEY`. It is loaded in code (`src/env.js`); variables already in `process.env`
+  win unless empty.
+- **`config.json` contains non-secret settings** (see `config.example.json`), plus an optional
+  `webhook.secret`. It is gitignored; the bot falls back to built-in defaults when it is
+  missing. `--config <path>` selects another file. Do not read non-secret settings from
+  environment variables.
+- Old non-secret variables left in `.env` are ignored; `loadConfig` reports them as
+  `ignoredEnvKeys` and the startup logs a warning. If `config.json` is missing, startup
+  fails with the list so no setting is silently lost. Do not add compatibility aliases.
+- Relative `dataDir` resolves from the repo root, not the process cwd. Never use temp dirs
   for real data.
-- `ALLOWED_CHAT_IDS` empty means every chat is served; `ADMIN_IDS` empty currently means
-  every member may manage the chat. Set both in real deployments.
-- `RESPONSE_TIMEOUT_MS=0` means no deadline. Provider timeouts are per provider and, for
+- `allowedChatIds` empty means every chat is served; `adminIds` empty currently means every
+  member may manage the chat. Set both in real deployments.
+- `responseTimeoutMs=0` means no deadline. Provider timeouts are per provider and, for
   streaming calls, currently act as a first-token guard only.
 
 ## Deferred owner decisions (do not "fix" unasked)
@@ -126,7 +134,7 @@ Run `npm test` and `npm run typecheck` before reporting work as complete. Do not
 These are known from the last review and intentionally left for the owner:
 
 - Persona/policy lines in `src/ai/prompt/sections.js` (P0).
-- Open admin default when `ADMIN_IDS` is empty (P1-1).
+- Open admin default when `adminIds` is empty (P1-1).
 - Unbounded tool calls / streaming total timeout (P1-3 and P1-4).
 - Reminder removal is not scoped to the creator or admins (P2-4).
 

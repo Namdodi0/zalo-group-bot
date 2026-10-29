@@ -37,7 +37,7 @@ loadEnvFiles();
 const config = loadConfig({
   // Do not parse flags from the message content (avoid "--help" inside a question).
   argv: [],
-  env: { ...process.env, LOG_LEVEL: process.env.LOG_LEVEL ?? 'warn' },
+  env: process.env,
 });
 const logger = createLogger({
   level: config.logLevel,

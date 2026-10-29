@@ -33,10 +33,8 @@ test('loadConfig exposes a version for logging', () => {
       ZALO_BOT_TOKEN: '123:abc',
       NIM_API_KEY: 'nvapi-test',
       TAVILY_API_KEY: 'tvly-test',
-      MODEL_DEFAULT: 'nim',
-      MODEL_FALLBACK: 'nim-light',
     },
-    cwd: process.cwd(),
+    config: { model: { defaultAlias: 'nim' } },
   });
   assert.equal(config.version, VERSION);
 });

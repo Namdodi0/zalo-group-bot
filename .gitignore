@@ -2,6 +2,7 @@ node_modules/
 dist/
 backups/
 data/
+config.json
 .env
 .env.local
 .env.panel

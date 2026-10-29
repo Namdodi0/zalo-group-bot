@@ -29,9 +29,11 @@ $include = @(
   'tsconfig.json',
   '.gitignore',
   '.env.example',
+  'config.example.json',
   '.npmrc',
   'index.js',
   'README.md',
+  'AGENTS.md',
   'ecosystem.config.cjs'
 )
 
@@ -52,27 +54,34 @@ try {
   if ($IncludeEnv) {
     $envPath = Join-Path $root '.env'
     if (Test-Path $envPath) {
-      # Write the .env as ASCII ONLY, NO BOM: a panel/host that reads the file as latin-1 or
-      # does not understand a BOM will mangle non-ASCII comments into mojibake.
-      # Keep only KEY=VALUE lines, rewrite comments as plain ASCII.
+      # Write the .env as ASCII ONLY, NO BOM. It holds API keys/tokens only.
       $stagedEnv = Join-Path $staging '.env'
       $lines = @(
-        '# zalo-group-bot - env for hosting panels (ASCII, no BOM)',
+        '# zalo-group-bot - API keys/tokens only (settings live in config.json)',
         '# Holds real tokens/keys. Do not share this file.',
-        '# If /home/container is not writable (EACCES mkdir data), change:',
-        '#   DATA_DIR=/home/container/zalo-data  (persistent volume only - never /tmp)',
         ''
       )
       foreach ($line in (Get-Content $envPath -Encoding UTF8)) {
-        if ($line -match '^\s*[A-Za-z_][A-Za-z0-9_]*\s*=') {
-          $lines += [regex]::Replace($line.TrimEnd(), '^LOG_FORMAT=.*$', 'LOG_FORMAT=json')
+        if ($line -match '^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=') {
+          if (@('ZALO_BOT_TOKEN', 'NIM_API_KEY', 'DEEPSEEK_API_KEY', 'TAVILY_API_KEY') -contains $matches[1]) {
+            $lines += $line.TrimEnd()
+          }
         }
       }
       [System.IO.File]::WriteAllLines($stagedEnv, $lines, (New-Object System.Text.UTF8Encoding($false)))
-      Write-Host "INCLUDED .env (holds real tokens/keys) - personal use only, never send this zip to anyone" -ForegroundColor Yellow
+      Write-Host "INCLUDED .env (holds real API keys) - personal use only, never send this zip to anyone" -ForegroundColor Yellow
     } else {
       Write-Warning "no .env found to include"
     }
+  }
+
+  # config.json has settings only (no secrets); include it when it exists.
+  $localConfig = Join-Path $root 'config.json'
+  if (Test-Path $localConfig) {
+    Copy-Item -Path $localConfig -Destination $staging -Force
+    Write-Host "INCLUDED config.json (settings only, no API keys)" -ForegroundColor Green
+  } else {
+    Write-Warning "no config.json found - the bot will use built-in defaults"
   }
 
   Get-ChildItem -Path $staging -Recurse -File -Include *.log, *.tmp, .DS_Store |
@@ -130,11 +139,13 @@ try {
   Write-Host ""
   Write-Host "Checks:" -ForegroundColor Cyan
   if ($IncludeEnv) {
-    Write-Host "  - .env IS in the package (holds secrets!) -> the panel must run: node --env-file-if-exists=.env src/index.js"
+    Write-Host "  - .env IS in the package (API keys/tokens only) -> keep it private"
     Write-Host "  - do not send this zip to anyone; delete it from your machine after uploading"
   } else {
-    Write-Host "  - .env is NOT in the package -> send it separately or enter the variables in the panel"
+    Write-Host "  - .env is NOT in the package -> send the API keys separately or enter them in the panel"
   }
+  Write-Host "  - config.json is included when present (settings only, no secrets)"
+  Write-Host "  - config.example.json is included -> copy it to config.json on a fresh server"
   Write-Host "  - data/ is NOT included -> the chat history stays on the dev machine"
   Write-Host "  - node_modules is NOT included -> the server only needs Node >= 20.6"
 } finally {

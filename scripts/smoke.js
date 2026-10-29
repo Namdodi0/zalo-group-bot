@@ -132,7 +132,7 @@ async function main() {
       report('Tavily search', false, String(/** @type {any} */ (error)?.message ?? error));
     }
   } else {
-    report('Tavily search', true, 'disabled (SEARCH_ENABLED=off)');
+    report('Tavily search', true, 'disabled (config.search.enabled=false)');
   }
 
   // 5. Image validator

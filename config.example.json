@@ -1,0 +1,84 @@
+{
+  "mode": "polling",
+  "dataDir": "./data",
+  "zalo": {
+    "botId": "",
+    "baseUrl": "https://bot-api.zaloplatforms.com",
+    "parseMode": "markdown"
+  },
+  "allowedChatIds": [],
+  "adminIds": [],
+  "webhook": {
+    "port": 8787,
+    "host": "127.0.0.1",
+    "path": "/zalo/webhook",
+    "secret": "",
+    "publicUrl": ""
+  },
+  "nim": {
+    "baseUrl": "https://integrate.api.nvidia.com/v1",
+    "model": "nvidia/nemotron-3.5-super-vl-120b-a12b",
+    "ultraModel": "nvidia/nemotron-3-ultra-550b-a55b",
+    "fallbackModel": "nvidia/nemotron-3.5-lightning-30b-a3b",
+    "temperature": 0.6,
+    "timeoutMs": 0
+  },
+  "deepseek": {
+    "baseUrl": "https://api.deepseek.com",
+    "model": "deepseek-flash",
+    "proModel": "deepseek-v4-pro",
+    "temperature": 0.6,
+    "timeoutMs": 0
+  },
+  "model": {
+    "defaultAlias": "deepseek",
+    "fallbackAlias": "nim-light"
+  },
+  "ai": {
+    "reasoning": "none",
+    "maxTokens": null
+  },
+  "responseTimeoutMs": 0,
+  "context": {
+    "maxTokens": 0,
+    "maxMessages": 0,
+    "maxCharsPerMessage": 12000,
+    "ttlHours": 72,
+    "summary": true,
+    "modelWindow": 0,
+    "compactThreshold": 0.8,
+    "keepRecent": 8,
+    "summaryMaxChars": 1200,
+    "toolResultKeepChars": 600
+  },
+  "search": {
+    "enabled": true,
+    "auto": true,
+    "baseUrl": "https://api.tavily.com",
+    "depth": "fast",
+    "maxResults": 4,
+    "country": "vietnam",
+    "cacheTtlMs": 600000
+  },
+  "image": {
+    "enabled": true
+  },
+  "sticker": {
+    "enabled": true,
+    "echo": true,
+    "ids": ""
+  },
+  "tone": "roast-hard",
+  "typing": true,
+  "typingIntervalMs": 4000,
+  "progressive": "auto",
+  "progressiveAfterMs": 3000,
+  "maxMessagesPerReply": 0,
+  "maxQueueDepth": 50,
+  "userRateLimitPerMinute": 12,
+  "logLevel": "info",
+  "logThinking": true,
+  "logFormat": "pretty",
+  "logColor": "auto",
+  "opsPort": null
+}

@@ -146,7 +146,7 @@ export function createAgent(deps) {
    * @param {string} provider
    */
   function providerTimeout(provider) {
-    const value = Number(config?.[provider]?.timeoutMs ?? config.ai.timeoutMs ?? 0);
+    const value = Number(config?.[provider]?.timeoutMs ?? 0);
     return Number.isFinite(value) && value > 0 ? value : 0;
   }
 
@@ -322,7 +322,7 @@ export function createAgent(deps) {
    */
   async function conversation(event, record, options = {}, stopTyping = async () => {}) {
     const startedAt = Date.now();
-    // RESPONSE_TIMEOUT_MS=0 means no deadline: wait for the model as long as it takes.
+    // config.responseTimeoutMs=0 means no deadline: wait for the model as long as it takes.
     const deadline =
       config.responseTimeoutMs > 0 ? startedAt + config.responseTimeoutMs : Number.POSITIVE_INFINITY;
     const sender = makeSender(event.chatId, stopTyping);
@@ -361,7 +361,7 @@ export function createAgent(deps) {
 
     const reasoning = effectiveReasoning(record, effectiveText);
     const target = llm.resolve(record);
-    // `/split` is per chat and takes priority over PROGRESSIVE in the config.
+    // `/split` is per chat and takes priority over config.progressive.
     const splitMode = ['auto', 'on', 'off'].includes(record?.meta?.split)
       ? record.meta.split
       : config.progressive;
@@ -435,7 +435,7 @@ export function createAgent(deps) {
 
     const messages = built.messages;
 
-    // Proof that context reaches the API: with LOG_LEVEL=debug you see the message count
+    // Proof that context reaches the API: with config.logLevel=debug you see the message count
     // (history included) and the character count of the whole payload on every turn.
     logger.debug('llm payload', {
       chatId: event.chatId,

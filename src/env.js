@@ -161,8 +161,8 @@ export function describeEnvHints() {
   }
   if (report.missing.length) {
     lines.push(
-      `  → create a .env file in that directory (copy it from .env.example), ` +
-        'or declare the environment variables directly in the host panel',
+      `  → create a .env file there (API keys only; non-secret settings live in config.json), ` +
+        'or declare the API keys directly in the host panel',
     );
   }
   if (report.applied.length) {

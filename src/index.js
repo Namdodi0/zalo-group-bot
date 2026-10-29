@@ -45,6 +45,14 @@ async function main() {
   });
   const metrics = createMetrics();
 
+  if (config.configFile && !config.configFileFound) {
+    logger.warn('config file not found — using built-in defaults', { path: config.configFile });
+  }
+  if (config.ignoredEnvKeys?.length) {
+    logger.warn('non-secret .env settings are ignored; move them to config.json', {
+      keys: config.ignoredEnvKeys,
+    });
+  }
   logger.debug('config', describeConfig(config));
   logger.debug('env files', {
     cwd: envReport.cwd,
@@ -80,7 +88,7 @@ async function main() {
     icon: '📚',
   });
   if (isEphemeralDataDir(config.dataDir)) {
-    logger.warn('DATA_DIR is inside a temp directory — context will be lost on restart/redeploy', {
+    logger.warn('config.dataDir is inside a temp directory — context will be lost on restart/redeploy', {
       dir: config.dataDir,
     });
   }
@@ -212,7 +220,7 @@ async function main() {
       logger.warn('this bot is not allowed to join groups (can_join_groups=false)');
     }
     if (!config.allowedChatIds.length) {
-      logger.warn('ALLOWED_CHAT_IDS is empty: the bot will reply to every chat. You should set the group chat.id.');
+      logger.warn('config.allowedChatIds is empty: the bot will reply to every chat. Set the group chat.id.');
     }
   } catch (error) {
     logger.error('could not call getMe — check ZALO_BOT_TOKEN', { error });
