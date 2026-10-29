@@ -35,9 +35,9 @@ Vietnamese input shortcuts such as `mai`/`mốt` for reminders remain supported.
 cd zalo-group-bot
 npm install          # 0 runtime deps; installs typescript/@types/node for typecheck
 copy .env.example .env
-copy config.example.json config.json
 # .env: fill in ZALO_BOT_TOKEN, DEEPSEEK_API_KEY, NIM_API_KEY (fallback), TAVILY_API_KEY
-# config.json: tune the bot (model, tone, context, webhook, allowed chats, admins…)
+# config.json is tracked and already present; edit it if you need different settings
+# (config.example.json is the baseline reference)
 npm run smoke        # checks token + DeepSeek + NIM + Tavily + image validation
 ```
 
@@ -175,7 +175,7 @@ There are only two files:
 | File | Contents |
 |---|---|
 | `.env` (gitignored) | **API keys/tokens only**: `ZALO_BOT_TOKEN`, `NIM_API_KEY`, `DEEPSEEK_API_KEY`, `TAVILY_API_KEY` |
-| `config.json` (gitignored) | Non-secret settings (plus an optional `webhook.secret`); copy [`config.example.json`](config.example.json) and edit |
+| `config.json` (tracked) | Settings committed with the repo (`config.example.json` is the same baseline); do **not** put API keys or a real `webhook.secret` in it |
 
 `.env` variables already set in the host panel/CI win over the file. Non-secret settings are
 read **only** from `config.json` (use `--config <path>` for another file). If an old `.env`
@@ -307,7 +307,7 @@ test-utils/          shared test helpers
 
 ## Security
 
-- Tokens/keys live only in `.env` (gitignored) and are always redacted in logs; `config.json` is gitignored too and holds settings plus the optional webhook secret.
+- Tokens/keys live only in `.env` (gitignored) and are always redacted in logs; `config.json` is tracked and must never contain API keys. Keep `webhook.secret` empty in the tracked file; the bot generates and stores it in `data/webhook-secret`.
 - **Keys that were sent over chat should be considered leaked — rotate them** (create new tokens/keys) once the bot runs reliably.
 - The webhook compares the secret timing-safe; set `webhook.secret` or let the bot generate and store it in `data/webhook-secret` (not committed).
 - The webhook binds localhost by default; `setWebhook`/`sendMessage` are not retried, to avoid duplicate sends.

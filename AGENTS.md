@@ -115,10 +115,10 @@ Run `npm test` and `npm run typecheck` before reporting work as complete. Do not
 - **`.env` contains API keys/tokens only**: `ZALO_BOT_TOKEN`, `NIM_API_KEY`, `DEEPSEEK_API_KEY`,
   `TAVILY_API_KEY`. It is loaded in code (`src/env.js`); variables already in `process.env`
   win unless empty.
-- **`config.json` contains non-secret settings** (see `config.example.json`), plus an optional
-  `webhook.secret`. It is gitignored; the bot falls back to built-in defaults when it is
-  missing. `--config <path>` selects another file. Do not read non-secret settings from
-  environment variables.
+- **`config.json` contains non-secret settings and is tracked** (see `config.example.json`).
+  It must never contain API keys; leave `webhook.secret` empty so the secret stays in
+  `data/webhook-secret`. `--config <path>` selects another file. Do not read non-secret
+  settings from environment variables.
 - Old non-secret variables left in `.env` are ignored; `loadConfig` reports them as
   `ignoredEnvKeys` and the startup logs a warning. If `config.json` is missing, startup
   fails with the list so no setting is silently lost. Do not add compatibility aliases.
