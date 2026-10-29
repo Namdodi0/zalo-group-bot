@@ -198,28 +198,28 @@ CLI flags: `--config <path> --model <alias> --mode --think --max-tokens --progre
 
 ### Creative sampling (default)
 
-The defaults are already a high-creativity preset; `config.json` can override any value.
-This is the effective default (and the block to use on a host whose `config.json` was
-created from an older example):
+The defaults are a balanced creative preset; `config.json` can override any value. Higher
+temperatures (1.2+) made Nemotron Ultra output multilingual token salad, so the tracked
+config uses safer values:
 
 ```json
 {
   "nim": {
-    "temperature": 1.2,
-    "topP": 1.0,
-    "frequencyPenalty": 0.3,
-    "presencePenalty": 0.5
+    "temperature": 0.85,
+    "topP": 0.95,
+    "frequencyPenalty": 0.1,
+    "presencePenalty": 0.2
   },
   "deepseek": {
-    "temperature": 1.2,
-    "topP": 1.0,
-    "frequencyPenalty": 0.2,
-    "presencePenalty": 0.4
+    "temperature": 0.9,
+    "topP": 0.95,
+    "frequencyPenalty": 0.1,
+    "presencePenalty": 0.2
   }
 }
 ```
 
-- Temperatures above ~1.3 start trading coherence for randomness; 1.1–1.2 is usually the sweet spot.
+- Treat `temperature` above ~1.0 as experimental; raise it gradually and check coherence.
 - `topK: -1`, `minP: 0`, `repetitionPenalty: 1.0–1.05` are NIM-only extras; leave them unset if your hosted endpoint rejects them.
 - `frequencyPenalty` reduces repeated wording; `presencePenalty` pushes new topics/ideas.
 - `seed` makes sampling repeatable (useful for testing, not for creativity).
